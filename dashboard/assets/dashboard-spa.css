@@ -1,0 +1,181 @@
+.dash-spa-host {
+  --shell-pad: 0.55rem;
+  --kpi-value: clamp(0.88rem, 1.6vw, 1.05rem);
+  --card-h: 200px;
+  --sidebar-w: minmax(220px, 272px);
+}
+
+.dash-spa-host .app {
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+.dash-spa-host header.shell {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding: var(--shell-pad) var(--shell-pad) var(--shell-pad) calc(var(--shell-pad) * 1.15);
+}
+
+.dash-spa-host header.shell h1 {
+  font-size: clamp(1.05rem, 2.4vw, 1.35rem);
+}
+
+.dash-spa-host header.shell .tagline {
+  font-size: clamp(0.75rem, 1.6vw, 0.88rem);
+}
+
+.dash-spa-host .sidebar {
+  grid-row: 2;
+  grid-column: 1;
+  padding: var(--shell-pad);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  z-index: 10;
+}
+
+.dash-spa-host .main,
+.dash-spa-host .dash-frames-wrap {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dash-spa-host .kpi .label {
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+}
+
+.dash-spa-host .kpi .value {
+  font-size: var(--kpi-value);
+}
+
+.dash-spa-host .kpi .sub {
+  font-size: 0.58rem;
+  line-height: 1.25;
+}
+
+.dash-spa-host .kpis {
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.dash-spa-host .kpi {
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+}
+
+.dash-spa-host .charts-row-2,
+.dash-spa-host .charts-stack {
+  gap: 0.45rem;
+}
+
+.dash-spa-host .card {
+  display: flex;
+  flex-direction: column;
+  height: var(--card-h);
+  min-width: 0;
+  min-height: 0;
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.dash-spa-host .card h3 {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  margin-bottom: 0.35rem;
+  line-height: 1.25;
+}
+
+.dash-spa-host .card canvas {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100% !important;
+  height: auto !important;
+  max-height: none;
+}
+
+.dash-spa-host .pill {
+  font-size: clamp(0.7rem, 1.3vw, 0.78rem);
+}
+
+.dash-spa-host .charts-row-2 .card,
+.dash-spa-host .charts-stack .card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dash-frames-wrap {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg1);
+  z-index: 1;
+}
+
+.dash-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dash-frame.active {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.dash-frame:not(.active) {
+  z-index: 0;
+}
+
+/* Narrow screens only: stack sidebar above map (explicit rows so map keeps flex space). */
+@media (max-width: 1100px) {
+  .dash-spa-host .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .dash-spa-host .sidebar {
+    grid-row: 2;
+    grid-column: 1;
+    max-height: 40vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dash-spa-host .main,
+  .dash-spa-host .dash-frames-wrap {
+    grid-row: 3;
+    grid-column: 1;
+    height: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .dash-spa-host .kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+  }
+
+  .dash-spa-host header.shell .dash-nav {
+    justify-content: flex-start;
+  }
+
+  .dash-spa-host .dash-nav-link {
+    font-size: 0.74rem;
+    padding: 0.35rem 0.65rem;
+  }
+}

@@ -1,0 +1,289 @@
+/* Embedded dashboard views: map-only pane inside SPA host */
+html.dash-embed,
+html.dash-embed body {
+  height: 100%;
+  overflow: hidden;
+}
+
+html.dash-embed .app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  height: 100%;
+}
+
+html.dash-embed header.shell,
+html.dash-embed aside.sidebar,
+html.dash-embed #pageLoading {
+  display: none !important;
+}
+
+html.dash-embed .main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  animation: none;
+}
+
+/* Fixed 2-row top strip — same height on Zone / Buildings / Flows tabs. */
+html.dash-embed .map-top-strip {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-height: 3.45rem;
+  padding: 0.32rem 0.55rem 0.34rem;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  z-index: 800;
+}
+
+html.dash-embed .map-top-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem 0.4rem;
+  min-height: 1.55rem;
+  overflow: hidden;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+html.dash-embed .map-top-filters--flows {
+  min-height: 1.55rem;
+}
+
+html.dash-embed .map-top-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.2rem;
+}
+
+html.dash-embed .map-top-legend-row .emissions-legend-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+
+html.dash-embed .map-top-legend-row .map-toolbar-attribution {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+html.dash-embed .map-top-count {
+  flex-shrink: 0;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+html.dash-embed .map-top-zone-clear {
+  flex-shrink: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.dash-embed .map-top-zone-clear.visible {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+html.dash-embed .map-top-strip .map-toolbar,
+html.dash-embed .map-top-strip .map-toolbar-title {
+  display: none;
+}
+
+html.dash-embed .map-top-strip .emissions-legend-gradient {
+  flex: 1 1 100px;
+  min-width: 72px;
+  max-width: 200px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+html.dash-embed .map-top-strip .emissions-legend-ticks {
+  display: flex;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+html.dash-embed .map-top-strip .emissions-legend-caption {
+  display: none;
+}
+
+html.dash-embed .preset-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html.dash-embed .preset-filter-row .advanced {
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+html.dash-embed .preset-filter-row .advanced label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+html.dash-embed .map-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+html.dash-embed .maps-section,
+html.dash-embed .maps-single-wrap,
+html.dash-embed .maps-single {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.dash-embed .maps-section-title {
+  display: none !important;
+}
+
+html.dash-embed .maps-single {
+  padding: 0;
+}
+
+html.dash-embed .map-view-panel.active {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.dash-embed .map-el,
+html.dash-embed .map-el-full,
+html.dash-embed .maps-single .map-el {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+}
+
+html.dash-embed .chip {
+  padding: 0.18rem 0.48rem;
+  font-size: 0.66rem;
+}
+
+html.dash-embed .pill {
+  padding: 0.12rem 0.42rem;
+  font-size: 0.66rem;
+}
+
+html.dash-embed .btn {
+  padding: 0.22rem 0.5rem;
+  font-size: 0.66rem;
+  border-radius: 7px;
+}
+
+html.dash-embed .toolbar-divider {
+  height: 14px;
+}
+
+html.dash-embed .advanced {
+  margin-top: 0;
+  gap: 0.25rem;
+}
+
+html.dash-embed input[type="number"],
+html.dash-embed select {
+  padding: 0.2rem 0.35rem;
+  font-size: 0.66rem;
+  width: 4.2rem;
+}
+
+html.dash-embed .dash-subnav {
+  padding: 0.1rem;
+  gap: 0.15rem;
+}
+
+html.dash-embed .dash-subnav-link {
+  padding: 0.22rem 0.5rem;
+  font-size: 0.66rem;
+}
+
+html.dash-embed .flow-panel,
+html.dash-embed .flows-detail-panel {
+  width: min(380px, calc(100% - 24px));
+  max-height: min(520px, calc(100% - 84px));
+  padding: clamp(0.65rem, 1.5vw, 1rem);
+  font-size: clamp(0.72rem, 1.35vw, 0.82rem);
+}
+
+html.dash-embed .flow-zone-label {
+  font-size: clamp(8px, 0.95vw, 11px);
+  padding: 2px 5px;
+  gap: 3px;
+}
+
+html.dash-embed .flow-zone-label .flow-zone-rank {
+  font-size: clamp(7px, 0.8vw, 9px);
+}
+
+html.dash-embed .flows-table-wrap table {
+  font-size: clamp(0.68rem, 1.2vw, 0.75rem);
+}
+
+html.dash-embed .flows-kpi-grid .kpi .value {
+  font-size: clamp(0.85rem, 1.8vw, 1rem);
+}
+
+html.dash-embed .map-toolbar .pill,
+html.dash-embed .map-toolbar .preset-row,
+html.dash-embed .map-toolbar .chip {
+  max-width: 100%;
+}
+
+html.dash-embed .preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+@media (max-width: 700px) {
+  html.dash-embed .map-top-legend-row {
+    flex-wrap: wrap;
+  }
+
+  html.dash-embed .map-top-legend-row .map-toolbar-attribution {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  html.dash-embed .flow-panel,
+  html.dash-embed .flows-detail-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: min(45vh, 360px);
+  }
+}

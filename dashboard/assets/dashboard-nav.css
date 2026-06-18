@@ -1,0 +1,86 @@
+.dash-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.dash-nav-link {
+  display: inline-block;
+  padding: 0.42rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), color 0.2s var(--ease);
+  white-space: nowrap;
+}
+
+.dash-nav-link:hover {
+  color: var(--text);
+  border-color: rgba(94, 234, 212, 0.35);
+  background: rgba(94, 234, 212, 0.08);
+}
+
+.dash-nav-link.active {
+  color: var(--text);
+  border-color: rgba(94, 234, 212, 0.55);
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.18), rgba(56, 189, 248, 0.1));
+}
+
+/* True center nav: side columns absorb width changes in #liveHint. */
+header.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+header.shell > div:first-child {
+  grid-column: 1;
+  justify-self: start;
+  min-width: 0;
+}
+
+header.shell .dash-nav {
+  grid-column: 2;
+  justify-self: center;
+  flex: none;
+  justify-content: center;
+}
+
+header.shell #liveHint {
+  grid-column: 3;
+  justify-self: end;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  header.shell {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  header.shell > div:first-child,
+  header.shell .dash-nav,
+  header.shell #liveHint {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+
+  header.shell .dash-nav {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  header.shell #liveHint {
+    justify-self: start;
+    white-space: normal;
+  }
+}

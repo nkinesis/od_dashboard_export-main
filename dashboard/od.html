@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PopGen · Actual OD survey (PM23) emissions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="assets/dashboard-redirect-od.js?v=1"></script>
+  <link rel="stylesheet" href="assets/loading-overlay.css" />
+  <link rel="stylesheet" href="assets/dashboard-nav.css" />
+  <link rel="stylesheet" href="assets/dashboard-shell.css?v=11" />
+  <link rel="stylesheet" href="assets/dashboard-embed.css?v=9" />
+  <script src="assets/dashboard-embed.js?v=1"></script>
+  <script src="assets/loading-overlay.js?v=11"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <style>
+    :root {
+      --bg0: #070a0f;
+      --bg1: #0c1119;
+      --surface: #121a26;
+      --surface2: #1a2436;
+      --border: rgba(94, 129, 172, 0.22);
+      --text: #e8eef7;
+      --muted: #8b9cb8;
+      --accent: #5eead4;
+      --accent2: #38bdf8;
+      --green: #4ade80;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --radius: 14px;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: radial-gradient(1200px 800px at 10% -10%, rgba(56, 189, 248, 0.08), transparent),
+        radial-gradient(900px 600px at 90% 0%, rgba(167, 139, 250, 0.06), transparent),
+        var(--bg0);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .app {
+      display: grid;
+      grid-template-columns: minmax(340px, 420px) 1fr;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+    @media (max-width: 1100px) { .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; } }
+    header.shell {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 0.75rem 1.5rem;
+      padding: 1rem 1.25rem 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(18, 26, 38, 0.95), rgba(12, 17, 25, 0.6));
+      backdrop-filter: blur(12px);
+      animation: fadeUp 0.6s var(--ease) both;
+    }
+    header.shell h1 {
+      margin: 0; font-family: Outfit, sans-serif; font-weight: 700;
+      font-size: 1.35rem; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--text), var(--accent));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header.shell .tagline { color: var(--muted); font-size: 0.88rem; }
+    .sidebar {
+      border-right: 1px solid var(--border);
+      padding: 1rem 1.25rem 1.5rem; overflow-y: auto;
+      max-height: calc(100vh - 64px); animation: fadeUp 0.65s var(--ease) 0.05s both;
+    }
+    @media (max-width: 1100px) { .sidebar { max-height: none; border-right: 0; border-bottom: 1px solid var(--border); } }
+    .main { display: flex; flex-direction: column; min-height: 0; animation: fadeUp 0.7s var(--ease) 0.1s both; }
+    .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.65rem; margin-bottom: 1rem; }
+    .kpi {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0.75rem 1rem; transition: border-color 0.25s var(--ease), transform 0.25s var(--ease);
+    }
+    .kpi:hover { border-color: rgba(94, 234, 212, 0.35); transform: translateY(-1px); }
+    .kpi .label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.2rem; }
+    .kpi .value { font-family: Outfit, sans-serif; font-size: 1.35rem; font-weight: 600; color: var(--accent); }
+    .kpi .value.green { color: var(--green); }
+    .kpi .sub {
+      font-size: 0.68rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.35;
+      font-variant-numeric: tabular-nums;
+    }
+    .charts-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
+    @media (max-width: 520px) { .charts-row-2 { grid-template-columns: 1fr; } }
+    .charts-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0.75rem 0.85rem; height: 220px; box-shadow: var(--shadow); transition: border-color 0.3s var(--ease);
+    }
+    .card:hover { border-color: rgba(56, 189, 248, 0.25); }
+    .card h3 { margin: 0 0 0.5rem; font-size: 0.78rem; font-weight: 600; color: var(--muted); font-family: Outfit, sans-serif; }
+    .card canvas { max-height: 170px; }
+    .map-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 720px;
+      position: relative;
+    }
+    .maps-section-title {
+      font-size: 0.72rem; font-weight: 600; color: var(--muted);
+      padding: 0.35rem 1rem 0; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .map-panel {
+      display: flex; flex-direction: column; min-height: 420px;
+      border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg1);
+    }
+    .maps-dual .map-panel { min-height: 360px; }
+    .maps-dual .map-el { min-height: 320px; }
+    .map-panel-label {
+      font-size: 0.72rem; font-weight: 600; color: var(--muted);
+      padding: 0.4rem 0.55rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 0.35rem;
+    }
+    .map-panel-label strong { color: var(--text); font-weight: 600; }
+    .map-el { flex: 1; width: 100%; min-height: 260px; }
+    .map-toolbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem;
+      padding: 0.75rem 1rem; background: var(--bg1); border-bottom: 1px solid var(--border);
+      font-size: 0.82rem; color: var(--muted);
+    }
+    .map-toolbar strong { color: var(--text); font-weight: 600; }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .preset-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem 0.5rem;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .chip {
+      border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text);
+      border-radius: 999px; padding: 0.35rem 0.75rem; font-size: 0.78rem; cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s; font-family: inherit;
+    }
+    .chip:hover { background: rgba(94, 234, 212, 0.08); border-color: rgba(94, 234, 212, 0.35); }
+    .chip.active {
+      background: linear-gradient(135deg, rgba(94, 234, 212, 0.2), rgba(56, 189, 248, 0.12));
+      border-color: rgba(94, 234, 212, 0.5); color: var(--accent);
+    }
+    .pill { border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.55rem; font-variant-numeric: tabular-nums; font-size: 0.78rem; color: var(--muted); }
+    .toolbar-divider { width: 1px; height: 22px; background: var(--border); margin: 0 0.15rem; }
+    input[type="number"], select {
+      width: 5.2rem; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 0.35rem 0.45rem; font-size: 0.8rem;
+    }
+    .btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); border: 0; color: #042f2e;
+      border-radius: 10px; padding: 0.4rem 0.85rem; font-weight: 700; font-size: 0.78rem; cursor: pointer;
+      font-family: inherit; transition: filter 0.2s, transform 0.15s;
+    }
+    .btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .toggle { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; user-select: none; }
+    .toggle input { accent-color: var(--accent); }
+    .emissions-legend-wrap { padding: 0.35rem 1rem 0.5rem; background: var(--bg1); border-bottom: 1px solid var(--border); }
+    .emissions-legend-gradient {
+      height: 14px; border-radius: 4px; border: 1px solid rgba(15, 23, 42, 0.25);
+      background: linear-gradient(90deg, #22c55e 0%, #a3e635 22%, #fde047 48%, #fb923c 72%, #dc2626 100%);
+    }
+    .emissions-legend-ticks { display: flex; justify-content: space-between; font-size: 0.72rem; font-variant-numeric: tabular-nums; color: var(--text); margin-top: 0.2rem; font-weight: 600; }
+    .emissions-legend-caption { text-align: center; font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+    .advanced { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0; }
+    .err { color: #fda4af; padding: 0.85rem 1.1rem; font-size: 0.82rem; max-width: min(920px, 100%); white-space: pre-wrap; line-height: 1.45; border: 1px solid rgba(251,113,133,0.35); border-radius: 12px; margin: 0.75rem 1rem; background: rgba(127,29,29,0.2); }
+    .flow-panel {
+      position: absolute; top: 72px; right: 12px;
+      width: min(380px, calc(100% - 24px)); max-height: min(420px, 65vh);
+      overflow: auto; background: rgba(12, 17, 25, 0.92); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem; z-index: 1000;
+      backdrop-filter: blur(14px); display: none;
+    }
+    .flow-panel.open { display: block; }
+    .flow-panel h4 { margin: 0 0 0.35rem; font-family: Outfit, sans-serif; font-size: 1.05rem; }
+    .flow-panel .sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.75rem; line-height: 1.45; }
+    .zone-kv { margin: 0; font-size: 0.78rem; }
+    .zone-kv dt { color: var(--muted); margin-top: 0.45rem; }
+    .zone-kv dd { margin: 0.1rem 0 0; font-variant-numeric: tabular-nums; }
+    .close-x {
+      float: right; background: none; border: 0; color: var(--muted);
+      font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 0 0.25rem;
+    }
+  </style>
+</head>
+<body data-dash-page="od-zones">
+  <div id="pageLoading" class="page-loading hidden" aria-live="polite">
+    <div class="page-loading-backdrop" aria-hidden="true"></div>
+    <div class="page-loading-content">
+      <img id="loadingGif" class="page-loading-img active" src="assets/original/gif-loading1.gif?v=10" alt="Loading">
+      <img id="loadingCompleteGif" class="page-loading-img" src="assets/original/loading-complete.gif?v=10" alt="Complete">
+    </div>
+  </div>
+  <div class="app">
+    <header class="shell">
+      <div>
+        <h1>Actual OD survey · PM23 emissions</h1>
+        <div class="tagline">Greater Montreal · PM23 actual OD</div>
+      </div>
+      <nav class="dash-nav" aria-label="OD dashboard views">
+        <a class="dash-nav-link" data-page="od-zones" href="/?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="/?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="/?view=flows">Flows</a>
+        <a class="dash-nav-link" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+      </nav>
+      <span class="pill" id="liveHint">Zone maps</span>
+    </header>
+
+    <aside class="sidebar">
+      <div class="kpis" id="kpis-rules">
+        <div class="kpi-section-title">Rules-based zone map</div>
+        <div class="kpi">
+          <div class="label">Car trips</div>
+          <div class="value" id="kpi-rules-trips">—</div>
+          <div class="sub" id="kpi-rules-trips-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">CO₂ (kg)</div>
+          <div class="value" id="kpi-rules-co2">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Distance (km)</div>
+          <div class="value" id="kpi-rules-km">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg kg / trip</div>
+          <div class="value green" id="kpi-rules-avg">—</div>
+        </div>
+      </div>
+      <div class="kpis" id="kpis-dest" style="margin-top:0.5rem">
+        <div class="kpi-section-title">Destination zone map</div>
+        <div class="kpi">
+          <div class="label">Car trips</div>
+          <div class="value" id="kpi-dest-trips">—</div>
+          <div class="sub" id="kpi-dest-trips-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">CO₂ (kg)</div>
+          <div class="value" id="kpi-dest-co2">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Distance (km)</div>
+          <div class="value" id="kpi-dest-km">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg kg / trip</div>
+          <div class="value green" id="kpi-dest-avg">—</div>
+        </div>
+      </div>
+      <p class="kpi-note" id="kpi-note" style="font-size:0.72rem;color:var(--muted);margin:0.35rem 0 0.85rem;line-height:1.4">
+        Use the map tabs to switch between rules-based and destination zone views.
+      </p>
+      <div class="charts-row-2">
+        <div class="card"><h3>Emissions by travel reason (kg CO₂)</h3><canvas id="chart-emissions"></canvas></div>
+        <div class="card"><h3>Trips by travel reason</h3><canvas id="chart-trips"></canvas></div>
+      </div>
+      <div class="charts-stack">
+        <div class="card"><h3>Emissions share by travel reason</h3><canvas id="chart-donut"></canvas></div>
+        <div class="card"><h3>Distance by travel reason (km)</h3><canvas id="chart-distance"></canvas></div>
+      </div>
+    </aside>
+
+    <section class="main">
+      <div class="map-top-strip">
+        <div class="map-top-filters">
+          <div class="preset-filter-row">
+            <span class="preset-row" id="presetChips"></span>
+            <span class="advanced">
+              <span>Custom (t)</span>
+              <label>min <input type="number" id="customMinKg" step="1" min="0" value="0" placeholder="0"></label>
+              <label>max <input type="number" id="customMaxKg" step="1" min="0" placeholder="∞"></label>
+              <button type="button" class="btn" id="applyCustomRange">Apply</button>
+            </span>
+          </div>
+          <span class="pill map-top-count" id="zoneCount">zones: —</span>
+        </div>
+        <div class="map-top-legend-row">
+          <div class="emissions-legend-wrap" id="zoneEmissionsLegend">
+            <div class="emissions-legend-gradient" aria-hidden="true"></div>
+            <div class="emissions-legend-ticks">
+              <span id="legendEmissionsMin">—</span>
+              <span id="legendEmissionsMid">—</span>
+              <span id="legendEmissionsMax">—</span>
+            </div>
+            <div class="emissions-legend-caption">Emissions by zone · t CO₂e (green low → red high)</div>
+          </div>
+          <nav class="dash-subnav map-toolbar-attribution" data-attribution-nav aria-label="Zone attribution">
+            <button type="button" class="dash-subnav-link active" data-attribution="rules">Rules-based</button>
+            <button type="button" class="dash-subnav-link" data-attribution="dest">Destination zone</button>
+          </nav>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div class="maps-section">
+          <div class="maps-single-wrap">
+            <div class="maps-single">
+              <div class="map-view-panel active" data-attribution-panel="rules">
+                <div id="map-rules" class="map-el-full"></div>
+              </div>
+              <div class="map-view-panel" data-attribution-panel="dest" hidden>
+                <div id="map-dest" class="map-el-full"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="flow-panel" id="zonePanel">
+          <button type="button" class="close-x" id="closeZonePanel" aria-label="Close">&times;</button>
+          <h4 id="zonePanelTitle">Zone</h4>
+          <div class="sub" id="zonePanelSub"></div>
+          <dl class="zone-kv" id="zonePanelBody"></dl>
+          <button type="button" class="btn" id="viewIncomingFlows" style="margin-top:0.75rem;width:100%">View incoming flows</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="assets/dashboard-nav.js?v=13"></script>
+  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script>
+    const IS_EMBED = !!(window.DashEmbed && DashEmbed.isEmbed);
+
+    function zoneCt(geoId, meta) {
+      if (window.DashZoneUi && DashZoneUi.zoneLabel) {
+        return DashZoneUi.zoneLabel(geoId, meta || {});
+      }
+      return String(geoId != null ? geoId : '');
+    }
+
+    function apiBase() {
+      try {
+        const u = (new URLSearchParams(window.location.search).get('api') || '').trim();
+        if (u) return u.replace(/\/$/, '');
+      } catch (_) { /* empty */ }
+      if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
+      return '';
+    }
+    const API = apiBase();
+
+    const CATEGORY_COLORS = ['#4ade80', '#5eead4', '#38bdf8', '#fbbf24', '#fb7185', '#a78bfa', '#f97316', '#34d399', '#c084fc', '#60a5fa'];
+    const RANGE_PRESETS = [
+      { id: 'all', label: 'All', minKg: 0, maxKg: null },
+      { id: 'low', label: '0 – 25 t', minKg: 0, maxKg: 25000 },
+      { id: 'mid', label: '25 – 100 t', minKg: 25000, maxKg: 100000 },
+      { id: 'high', label: '100 – 500 t', minKg: 100000, maxKg: 500000 },
+      { id: 'vh', label: '≥ 500 t', minKg: 500000, maxKg: null },
+    ];
+
+    let chartEmissions, chartTrips, chartDonut, chartDistance;
+    const MAP_SPECS = [
+      { key: 'rules', elId: 'map-rules', zoneBy: 'rules' },
+      { key: 'dest', elId: 'map-dest', zoneBy: 'dest' },
+    ];
+    const mapViews = {};
+    let activePresetId = 'all';
+    let zoneEmissionScale = { minG: 0, maxG: 1 };
+    let bootCache = null;
+    let selectedZoneId = null;
+    let selectedZoneBy = null;
+
+    function activeViewKey() {
+      if (window.DashNav && DashNav.readAttribution('rules') === 'dest') return 'dest';
+      return 'rules';
+    }
+
+    function findZoneRow(geoId, payload) {
+      const id = String(geoId);
+      const fromList = (payload && payload.zones || []).find(z => String(z.geo_id) === id);
+      if (fromList) return fromList;
+      const f = (payload && payload.geojson && payload.geojson.features || [])
+        .find(ft => String(ft.properties && ft.properties.geo_id) === id);
+      return f ? f.properties : null;
+    }
+
+    async function fetchJson(path) {
+      const url = (API || '') + path;
+      let r;
+      try {
+        r = await fetch(url);
+      } catch (net) {
+        const hint = API ? '' : '\n\nTip: open from the OD server (http://127.0.0.1:5051/) or add ?api=http://127.0.0.1:5051';
+        throw new Error('Network error calling ' + (url || path) + ': ' + (net && net.message ? net.message : net) + hint);
+      }
+      const text = await r.text();
+      if (!r.ok) {
+        let detail = (text || '').trim() || r.statusText;
+        try {
+          const j = JSON.parse(text);
+          if (j.message) detail = j.message;
+          else if (j.error) detail = j.error;
+        } catch (_) { /* plain text */ }
+        throw new Error('HTTP ' + r.status + '\n' + detail);
+      }
+      if (!text) return {};
+      return JSON.parse(text);
+    }
+    function formatNum(n) {
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+      return Number(n).toLocaleString();
+    }
+    function shortChartLabel(s, maxLen) {
+      if (s == null || s === '') return '';
+      const t = String(s).trim();
+      if (t.length <= maxLen) return t;
+      return t.slice(0, Math.max(1, maxLen - 1)) + '…';
+    }
+    const CHART_ANIM = { duration: 280, easing: 'easeOutQuart' };
+    function tonnesFromG(g) { return (g || 0) / 1e6; }
+    const EMISSION_COLOR_STOPS = [
+      { t: 0, c: '#22c55e' }, { t: 0.22, c: '#a3e635' }, { t: 0.48, c: '#fde047' },
+      { t: 0.72, c: '#fb923c' }, { t: 1, c: '#dc2626' },
+    ];
+    const EMISSION_HEAT_GRADIENT = { 0.1: '#22c55e', 0.35: '#a3e635', 0.55: '#fde047', 0.75: '#fb923c', 1: '#dc2626' };
+
+    function collectEmissionsGFromPayload(payload) {
+      const vals = [];
+      (payload?.zones || []).forEach(z => {
+        const g = Number(z.total_emissions_g);
+        if (Number.isFinite(g) && g > 0) vals.push(g);
+      });
+      (payload?.geojson?.features || []).forEach(f => {
+        const g = Number(f.properties && f.properties.total_emissions_g);
+        if (Number.isFinite(g) && g > 0) vals.push(g);
+      });
+      return vals;
+    }
+    function updateZoneEmissionScaleFor(viewKey) {
+      const payload = mapViews[viewKey] && mapViews[viewKey].payload;
+      const vals = collectEmissionsGFromPayload(payload);
+      if (!vals.length) { zoneEmissionScale = { minG: 0, maxG: 1 }; return; }
+      zoneEmissionScale = { minG: Math.min(...vals), maxG: Math.max(...vals) };
+      const minT = zoneEmissionScale.minG / 1e6;
+      const maxT = zoneEmissionScale.maxG / 1e6;
+      const midT = (minT + maxT) / 2;
+      const fmtT = (t) => {
+        const n = Number(t) || 0;
+        return n >= 100 ? Math.round(n).toLocaleString() : (Math.round(n * 10) / 10).toLocaleString();
+      };
+      const elMin = document.getElementById('legendEmissionsMin');
+      const elMid = document.getElementById('legendEmissionsMid');
+      const elMax = document.getElementById('legendEmissionsMax');
+      if (elMin) elMin.textContent = fmtT(minT);
+      if (elMid) elMid.textContent = fmtT(midT);
+      if (elMax) elMax.textContent = fmtT(maxT);
+    }
+    function formatKgCo2e(emissionsG) { return Math.round((Number(emissionsG) || 0) / 1000).toLocaleString(); }
+    function totalEmissionsKg(statsOrG) {
+      if (statsOrG && typeof statsOrG === 'object') {
+        const g = Number(statsOrG.total_emissions_g);
+        if (Number.isFinite(g)) return Math.round(g / 1000);
+        const t = Number(statsOrG.total_emissions_tonnes);
+        if (Number.isFinite(t)) return Math.round(t * 1000);
+        return null;
+      }
+      return Math.round((Number(statsOrG) || 0) / 1000);
+    }
+    function avgEmissionsKgPerTrip(avgG) {
+      const g = Number(avgG);
+      return Number.isFinite(g) ? Math.round(g / 1000) : null;
+    }
+    function emissionNormFromG(emissionsG) {
+      const g = Number(emissionsG) || 0;
+      const { minG, maxG } = zoneEmissionScale;
+      if (maxG <= minG) return 0;
+      const linear = (g - minG) / (maxG - minG);
+      return Math.max(0, Math.min(1, Math.pow(linear, 0.72)));
+    }
+    function mixHex(a, b, u) {
+      const pa = a.slice(1).match(/.{2}/g).map(x => parseInt(x, 16));
+      const pb = b.slice(1).match(/.{2}/g).map(x => parseInt(x, 16));
+      const o = pa.map((v, i) => Math.round(v + (pb[i] - v) * u));
+      return '#' + o.map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+    function colorFromStops(stops, tNorm) {
+      const t = Math.max(0, Math.min(1, tNorm));
+      for (let i = 1; i < stops.length; i++) {
+        if (t <= stops[i].t) {
+          const a = stops[i - 1]; const b = stops[i];
+          const u = (t - a.t) / (b.t - a.t || 1);
+          return mixHex(a.c, b.c, u);
+        }
+      }
+      return stops[stops.length - 1].c;
+    }
+    function emissionColor(tNorm) { return colorFromStops(EMISSION_COLOR_STOPS, tNorm); }
+    function parseZoneMapResponse(raw) {
+      if (window.DashZoneUi && DashZoneUi.parseZoneMapResponse) {
+        return DashZoneUi.parseZoneMapResponse(raw);
+      }
+      if (Array.isArray(raw)) return { zones: raw, geojson: null, zoneDistById: {} };
+      const zones = Array.isArray(raw.zones) ? raw.zones : [];
+      const gj = raw.geojson && raw.geojson.type === 'FeatureCollection' && Array.isArray(raw.geojson.features) ? raw.geojson : null;
+      return { zones, geojson: gj, zoneDistById: {} };
+    }
+
+    function initCharts(byCategory) {
+      if (!byCategory || !byCategory.length) return;
+      const sorted = [...byCategory].sort((a, b) => (b.total_emissions_g || 0) - (a.total_emissions_g || 0));
+      const labels = sorted.map(d => shortChartLabel(d.category, 14));
+      const emissionsData = sorted.map(d => totalEmissionsKg(d.total_emissions_g));
+      const tripsData = sorted.map(d => d.trips);
+      const distanceData = sorted.map(d => d.total_distance_km);
+      const totalEmissions = emissionsData.reduce((a, b) => a + b, 0);
+      const totalTrips = tripsData.reduce((a, b) => a + b, 0);
+      const totalDistance = distanceData.reduce((a, b) => a + b, 0);
+      const bgColors = labels.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
+      const anim = CHART_ANIM;
+      const commonOpts = {
+        responsive: true, maintainAspectRatio: false, animation: anim,
+        plugins: {
+          legend: { display: false },
+          datalabels: { color: '#e8eef7', font: { size: 9, weight: '500' } }
+        },
+        scales: {
+          x: { ticks: { color: '#8b9cb8', maxRotation: 45, minRotation: 0, autoSkip: false }, grid: { color: 'rgba(148,163,184,0.08)' } },
+          y: { beginAtZero: true, ticks: { color: '#8b9cb8' }, grid: { color: 'rgba(148,163,184,0.08)' } }
+        }
+      };
+      if (chartEmissions) chartEmissions.destroy();
+      chartEmissions = new Chart(document.getElementById('chart-emissions'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'kg CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
+        options: { ...commonOpts, plugins: { ...commonOpts.plugins, datalabels: { ...commonOpts.plugins.datalabels, anchor: 'end', align: 'end', formatter: (v) => (!totalEmissions ? '' : ((v / totalEmissions) * 100).toFixed(1) + '%') } } },
+        plugins: [ChartDataLabels]
+      });
+      if (chartTrips) chartTrips.destroy();
+      chartTrips = new Chart(document.getElementById('chart-trips'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Trips', data: tripsData, backgroundColor: bgColors, borderRadius: 6 }] },
+        options: { ...commonOpts, plugins: { ...commonOpts.plugins, datalabels: { ...commonOpts.plugins.datalabels, anchor: 'end', align: 'end', formatter: (v) => (!totalTrips ? '' : ((v / totalTrips) * 100).toFixed(1) + '%') } } },
+        plugins: [ChartDataLabels]
+      });
+      if (chartDonut) chartDonut.destroy();
+      chartDonut = new Chart(document.getElementById('chart-donut'), {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data: sorted.map(d => d.total_emissions_g), backgroundColor: bgColors, borderWidth: 0 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: anim, cutout: '58%',
+          plugins: {
+            legend: { position: 'right', labels: { color: '#8b9cb8', boxWidth: 10, font: { size: 10 } } },
+            datalabels: { color: '#e8eef7', font: { size: 9 }, formatter: (value, ctx) => { const arr = ctx.chart.data.datasets[0].data; const total = arr.reduce((a, b) => a + b, 0); if (!total) return ''; return ((value / total) * 100).toFixed(1) + '%'; } }
+          }
+        },
+        plugins: [ChartDataLabels]
+      });
+      if (chartDistance) chartDistance.destroy();
+      chartDistance = new Chart(document.getElementById('chart-distance'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'km', data: distanceData, backgroundColor: bgColors, borderRadius: 6 }] },
+        options: { ...commonOpts, plugins: { ...commonOpts.plugins, datalabels: { ...commonOpts.plugins.datalabels, anchor: 'end', align: 'end', formatter: (v) => (!totalDistance ? '' : ((v / totalDistance) * 100).toFixed(1) + '%') } } },
+        plugins: [ChartDataLabels]
+      });
+    }
+
+    function renderHeat(viewKey, zoneData, show) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map) return;
+      const list = Array.isArray(zoneData) ? zoneData : [];
+      const points = list.map(z => [z.lat, z.lon, emissionNormFromG(z.total_emissions_g) * 0.85 + 0.15]);
+      if (!v.heatLayer) {
+        v.heatLayer = L.heatLayer(points, { pane: 'heatPane', radius: 28, blur: 22, maxZoom: 13, max: 1, gradient: EMISSION_HEAT_GRADIENT });
+      } else {
+        v.heatLayer.setLatLngs(points);
+      }
+      if (show) { if (!v.map.hasLayer(v.heatLayer)) v.heatLayer.addTo(v.map); }
+      else if (v.map.hasLayer(v.heatLayer)) { v.map.removeLayer(v.heatLayer); }
+      if (viewKey === activeViewKey()) {
+        const countEl = document.getElementById('zoneCount');
+        if (countEl) countEl.textContent = 'zones: ' + list.length.toLocaleString();
+      }
+    }
+    function zoneRadiusPx(z) { return 4 + emissionNormFromG(z.total_emissions_g) * 16; }
+    function disposeZoneLayer(viewKey) {
+      const v = mapViews[viewKey];
+      if (!v || !v.zoneLayer || !v.map) return;
+      v.map.removeLayer(v.zoneLayer);
+      v.zoneLayer = null;
+    }
+    function renderZoneLayer(viewKey, payload) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map) return;
+      disposeZoneLayer(viewKey);
+      const zones = (payload && payload.zones) ? payload.zones : [];
+      const zonesById = {};
+      zones.forEach(z => { if (z && z.geo_id != null) zonesById[String(z.geo_id)] = z; });
+      const zoneDistById = (payload && payload.zoneDistById) ? payload.zoneDistById : {};
+      const fc = payload && payload.geojson;
+      const highlight = selectedZoneId != null && selectedZoneBy === v.zoneBy;
+      const selId = highlight ? String(selectedZoneId) : '';
+      if (fc && fc.features && fc.features.length) {
+        v.zoneLayer = L.geoJSON(fc, {
+          pane: 'zonePane',
+          filter(feature) { const t = feature.geometry && feature.geometry.type; return t === 'Polygon' || t === 'MultiPolygon'; },
+          style(feature) {
+            const p = feature.properties;
+            const g = (p && p.total_emissions_g) || 0;
+            const isSel = highlight && p && selId && String(p.geo_id) === selId;
+            return {
+              fillColor: emissionColor(emissionNormFromG(g)),
+              fillOpacity: 0.78,
+              color: isSel ? '#5eead4' : '#166534',
+              weight: isSel ? 2.5 : 1.15,
+              opacity: 0.95,
+            };
+          },
+          onEachFeature(feature, layer) {
+            const p = feature.properties || {};
+            const tip = window.DashZoneUi
+              ? DashZoneUi.zoneTooltipHtml(p.geo_id, p, zonesById, zoneDistById)
+              : ('<div style="font-size:11px"><strong>Zone ' + String(p.geo_id) + '</strong></div>');
+            layer.bindTooltip(tip + '<br><span style="color:#8b9cb8">Click for zone details</span>', { direction: 'top', opacity: 1 });
+            bindZoneSelectClick(layer, p.geo_id, v.zoneBy);
+          },
+        }).addTo(v.map);
+        return;
+      }
+      v.zoneLayer = L.layerGroup({ pane: 'zonePane' }).addTo(v.map);
+      zones.forEach(z => {
+        const zid = String(z.geo_id);
+        const isSel = highlight && selId === zid;
+        const m = L.circleMarker([z.lat, z.lon], {
+          radius: zoneRadiusPx(z), stroke: true, weight: 2,
+          color: isSel ? '#5eead4' : '#166534',
+          fillColor: emissionColor(emissionNormFromG(z.total_emissions_g)), fillOpacity: 0.88,
+        });
+        const tip = window.DashZoneUi
+          ? DashZoneUi.zoneTooltipHtml(zid, z, zonesById, zoneDistById)
+          : ('<div style="font-size:11px"><strong>Zone ' + zid + '</strong></div>');
+        m.bindTooltip(tip + '<br><span style="color:#8b9cb8">Click for zone details</span>', { direction: 'top', opacity: 1 });
+        bindZoneSelectClick(m, z.geo_id, v.zoneBy);
+        m.addTo(v.zoneLayer);
+      });
+    }
+
+    let cmmZonesBoundaryGeojson = null;
+    let montrealBoundaryGeojson = null;
+
+    function createMapView(spec) {
+      const m = L.map(spec.elId).setView([45.52, -73.68], 10);
+      m.createPane('zoneBgPane'); m.getPane('zoneBgPane').style.zIndex = 405;
+      m.createPane('heatPane'); m.getPane('heatPane').style.zIndex = 410;
+      m.createPane('zonePane'); m.getPane('zonePane').style.zIndex = 430;
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 20,
+      }).addTo(m);
+      m.fitBounds([[45.38, -74.0], [45.68, -73.35]], { animate: false });
+      return { ...spec, map: m, zoneLayer: null, heatLayer: null, boundaryLayer: null, zonesBoundaryLayer: null, payload: { zones: [], geojson: null } };
+    }
+
+    function ensureMapViewData(key) {
+      if (mapViews[key]) return mapViews[key];
+      const spec = MAP_SPECS.find(s => s.key === key);
+      if (!spec) return null;
+      mapViews[key] = {
+        ...spec,
+        map: null,
+        zoneLayer: null,
+        heatLayer: null,
+        boundaryLayer: null,
+        zonesBoundaryLayer: null,
+        payload: { zones: [], geojson: null },
+      };
+      return mapViews[key];
+    }
+
+    function applyMontrealBoundaryToView(key) {
+      const v = mapViews[key];
+      if (!v || !v.map || !montrealBoundaryGeojson) return;
+      if (v.boundaryLayer) { v.map.removeLayer(v.boundaryLayer); v.boundaryLayer = null; }
+      v.boundaryLayer = L.geoJSON(montrealBoundaryGeojson, {
+        interactive: false,
+        style: () => ({ color: '#14b8a6', weight: 2.5, opacity: 0.9, fillColor: '#2dd4bf', fillOpacity: 0.07 }),
+      }).addTo(v.map);
+    }
+
+    function applyCmmBoundaryToView(key) {
+      const v = mapViews[key];
+      if (!v || !v.map || !cmmZonesBoundaryGeojson) return;
+      if (v.zonesBoundaryLayer) { v.map.removeLayer(v.zonesBoundaryLayer); v.zonesBoundaryLayer = null; }
+      v.zonesBoundaryLayer = L.geoJSON(cmmZonesBoundaryGeojson, {
+        pane: 'zoneBgPane',
+        interactive: false,
+        style: () => ({
+          color: 'rgba(148, 163, 184, 0.42)',
+          weight: 0.85,
+          opacity: 0.55,
+          fillOpacity: 0,
+          fill: false,
+        }),
+      }).addTo(v.map);
+    }
+
+    function fitMapView(key) {
+      const v = mapViews[key];
+      if (!v || !v.map) return;
+      v.map.invalidateSize();
+      if (v.boundaryLayer) {
+        try {
+          const b = v.boundaryLayer.getBounds();
+          if (b && b.isValid && b.isValid()) {
+            v.map.fitBounds(b.pad(0.05), { maxZoom: 11, animate: false });
+            return;
+          }
+        } catch (_) { /* ignore */ }
+      }
+      try {
+        v.map.fitBounds([[45.38, -74.0], [45.68, -73.35]], { animate: false, maxZoom: 11 });
+      } catch (_) { /* ignore */ }
+    }
+
+    function ensureMapView(key) {
+      const spec = MAP_SPECS.find(s => s.key === key);
+      if (!spec) return null;
+      const saved = ensureMapViewData(key);
+      if (!saved) return null;
+      const savedPayload = saved.payload;
+      if (saved.map) return saved;
+      mapViews[key] = createMapView(spec);
+      mapViews[key].payload = savedPayload || { zones: [], geojson: null };
+      applyMontrealBoundaryToView(key);
+      applyCmmBoundaryToView(key);
+      updateZoneEmissionScaleFor(key);
+      const payload = mapViews[key].payload || { zones: [], geojson: null };
+      renderHeat(key, payload.zones, false);
+      renderZoneLayer(key, payload);
+      window.setTimeout(() => fitMapView(key), 40);
+      window.setTimeout(() => fitMapView(key), 280);
+      return mapViews[key];
+    }
+
+    function applyCmmZoneBoundariesToMaps(gj) {
+      if (!gj || gj.type !== 'FeatureCollection' || !gj.features?.length) return;
+      cmmZonesBoundaryGeojson = gj;
+      MAP_SPECS.forEach(spec => applyCmmBoundaryToView(spec.key));
+    }
+
+    async function loadCmmZoneBoundaries() {
+      try {
+        if (!cmmZonesBoundaryGeojson) {
+          const raw = await fetchJson('/api/od/zones_boundary?island_only=0');
+          cmmZonesBoundaryGeojson = raw && raw.geojson;
+        }
+        applyCmmZoneBoundariesToMaps(cmmZonesBoundaryGeojson);
+      } catch (e) {
+        console.warn('CMM zone boundaries:', e);
+      }
+    }
+
+    async function loadMontrealBoundary() {
+      try {
+        const gj = await fetchJson('/api/montreal_boundary.geojson');
+        if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) return;
+        montrealBoundaryGeojson = gj;
+        MAP_SPECS.forEach(spec => applyMontrealBoundaryToView(spec.key));
+      } catch (e) { console.warn('Montreal boundary:', e); }
+    }
+
+    function initMaps() {
+      MAP_SPECS.forEach(s => ensureMapViewData(s.key));
+      ensureMapView(activeViewKey());
+    }
+
+    function navigateToOdFlows(destGeoId, mapZoneBy) {
+      let zb = (mapZoneBy || '').trim().toLowerCase();
+      if (!zb && window.DashNav) zb = DashNav.readAttribution('rules');
+      zb = zb === 'dest' ? 'dest' : 'rules';
+
+      if (IS_EMBED && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'dash-open-flows',
+          dest_geo_id: destGeoId != null && destGeoId !== '' ? String(destGeoId) : '',
+          zone_by: zb,
+        }, '*');
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set('view', 'flows');
+      if (destGeoId != null && destGeoId !== '') params.set('dest_geo_id', String(destGeoId));
+      if (zb === 'dest') params.set('attribution', 'dest');
+      const api = (new URLSearchParams(window.location.search).get('api') || '').trim();
+      if (api) params.set('api', api);
+      window.location.href = '/?' + params.toString();
+    }
+
+    function populateZonePanel(geoId, zoneBy) {
+      const viewKey = zoneBy === 'dest' ? 'dest' : 'rules';
+      const payload = mapViews[viewKey] && mapViews[viewKey].payload;
+      const row = findZoneRow(geoId, payload) || {};
+      const title = document.getElementById('zonePanelTitle');
+      const sub = document.getElementById('zonePanelSub');
+      const body = document.getElementById('zonePanelBody');
+      if (title) title.textContent = zoneCt(geoId, row);
+      if (sub) {
+        sub.textContent = zoneBy === 'dest'
+          ? 'Destination zone · PM23 actual OD'
+          : 'Rules-based attribution · PM23 actual OD';
+      }
+      if (body) {
+        const kg = formatKgCo2e(row.total_emissions_g);
+        const trips = fmtPopTrips(row.trips_weighted || row.trips);
+        const km = row.total_distance_km != null ? formatNum(row.total_distance_km) + ' km' : '—';
+        body.innerHTML =
+          '<dt>CO₂ emissions</dt><dd>' + kg + ' kg CO₂e</dd>' +
+          '<dt>Car trips</dt><dd>' + trips + '</dd>' +
+          '<dt>Distance</dt><dd>' + km + '</dd>';
+      }
+      const panel = document.getElementById('zonePanel');
+      if (panel) panel.classList.add('open');
+    }
+
+    function selectZoneForPanel(geoId, zoneBy) {
+      if (geoId == null || geoId === '') return;
+      selectedZoneId = String(geoId);
+      selectedZoneBy = zoneBy === 'dest' ? 'dest' : 'rules';
+      populateZonePanel(selectedZoneId, selectedZoneBy);
+      refreshActiveMapView();
+    }
+
+    function clearZonePanel() {
+      selectedZoneId = null;
+      selectedZoneBy = null;
+      const panel = document.getElementById('zonePanel');
+      if (panel) panel.classList.remove('open');
+      refreshActiveMapView();
+    }
+
+    function bindZoneSelectClick(layer, geoId, zoneBy) {
+      if (!geoId) return;
+      layer.on('click', (e) => {
+        if (e && e.originalEvent) L.DomEvent.stopPropagation(e);
+        selectZoneForPanel(geoId, zoneBy);
+      });
+    }
+
+    function buildZoneQuery(minKg, maxKg) {
+      const q = new URLSearchParams();
+      q.set('min_kg', String(Number(minKg) || 0));
+      q.set('island_only', '1');
+      if (maxKg != null && maxKg !== '' && !Number.isNaN(Number(maxKg))) q.set('max_kg', String(Number(maxKg)));
+      return q.toString();
+    }
+    async function loadDualZoneMaps(minKg, maxKg) {
+      const qs = buildZoneQuery(minKg, maxKg);
+      try {
+        return await fetchJson('/api/od/zone_maps?' + qs);
+      } catch (batchErr) {
+        console.warn('zone_maps batch failed, falling back to two requests:', batchErr);
+        const [dest, rules] = await Promise.all([
+          fetchJson('/api/od/zone_map?' + qs + '&zone_by=dest'),
+          fetchJson('/api/od/zone_map?' + qs + '&zone_by=rules'),
+        ]);
+        return { dest, rules };
+      }
+    }
+    function fmtPopTrips(n) {
+      if (!Number.isFinite(Number(n))) return '—';
+      return window.DashZoneUi ? DashZoneUi.formatTrips(n) : String(Math.round(Number(n) || 0));
+    }
+    function applyDualZonePayload(raw) {
+      MAP_SPECS.forEach(s => ensureMapViewData(s.key));
+      mapViews.dest.payload = parseZoneMapResponse(raw.dest || raw);
+      mapViews.rules.payload = parseZoneMapResponse(raw.rules || raw);
+      refreshActiveMapView();
+    }
+
+    function refreshActiveMapView() {
+      const key = activeViewKey();
+      ensureMapView(key);
+      const spec = MAP_SPECS.find(s => s.key === key) || MAP_SPECS[0];
+      if (!spec || !mapViews[spec.key] || !mapViews[spec.key].map) return;
+      updateZoneEmissionScaleFor(spec.key);
+      const payload = mapViews[spec.key].payload || { zones: [] };
+      renderHeat(spec.key, payload.zones, false);
+      renderZoneLayer(spec.key, payload);
+    }
+
+    function renderPresetChips() {
+      const host = document.getElementById('presetChips');
+      host.innerHTML = '';
+      RANGE_PRESETS.forEach(p => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip' + (p.id === activePresetId ? ' active' : '');
+        b.textContent = p.label;
+        b.addEventListener('click', () => {
+          activePresetId = p.id;
+          document.getElementById('customMinKg').value = p.minKg / 1000;
+          document.getElementById('customMaxKg').value = p.maxKg == null ? '' : p.maxKg / 1000;
+          renderPresetChips();
+          refreshZones();
+        });
+        host.appendChild(b);
+      });
+    }
+    async function refreshZones() {
+      let minKg;
+      let maxKg;
+      if (activePresetId === '__custom') {
+        minKg = Number(document.getElementById('customMinKg').value || 0) * 1000;
+        const maxRaw = document.getElementById('customMaxKg').value;
+        maxKg = maxRaw === '' ? null : Number(maxRaw) * 1000;
+      } else {
+        const preset = RANGE_PRESETS.find(p => p.id === activePresetId) || RANGE_PRESETS[0];
+        minKg = preset.minKg;
+        maxKg = preset.maxKg;
+        if (activePresetId === 'all') maxKg = null;
+        else if (preset.maxKg == null && preset.minKg > 0) maxKg = null;
+      }
+      const raw = await loadDualZoneMaps(minKg, maxKg);
+      applyDualZonePayload(raw);
+    }
+
+    function setKpiLoading(loading) {
+      const ids = [
+        'kpi-rules-trips', 'kpi-rules-co2', 'kpi-rules-km', 'kpi-rules-avg',
+        'kpi-dest-trips', 'kpi-dest-co2', 'kpi-dest-km', 'kpi-dest-avg',
+      ];
+      if (loading) ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '…'; });
+    }
+    function applyKpiBlock(prefix, stats) {
+      if (!stats) return;
+      const trips = Number(stats.trips_weighted ?? stats.trips) || 0;
+      const emis = Number(stats.total_emissions_g_weighted ?? stats.total_emissions_g) || 0;
+      const km = Number(stats.total_distance_km_weighted ?? stats.total_distance_km) || 0;
+      const tripsEl = document.getElementById('kpi-' + prefix + '-trips');
+      if (tripsEl) tripsEl.textContent = fmtPopTrips(trips);
+      const sub = document.getElementById('kpi-' + prefix + '-trips-sub');
+      if (sub) {
+        sub.textContent = stats.kpi_scope === 'island_eligible'
+          ? 'CMM residents · island-touch'
+          : '';
+      }
+      const kg = totalEmissionsKg(emis);
+      const co2El = document.getElementById('kpi-' + prefix + '-co2');
+      if (co2El) co2El.textContent = kg != null ? formatNum(kg) : '—';
+      const kmEl = document.getElementById('kpi-' + prefix + '-km');
+      if (kmEl) kmEl.textContent = formatNum(km);
+      const avgG = trips > 0 ? emis / trips : Number(stats.avg_emissions_g_per_trip) || 0;
+      const avgKg = avgEmissionsKgPerTrip(avgG);
+      const avgEl = document.getElementById('kpi-' + prefix + '-avg');
+      if (avgEl) avgEl.textContent = avgKg != null ? formatNum(avgKg) : '—';
+    }
+
+    function applyDualKpiStats(boot) {
+      if (!boot) return;
+      applyKpiBlock('rules', boot.stats_rules || boot.stats);
+      applyKpiBlock('dest', boot.stats_dest);
+    }
+
+    function invalidateActiveMap() {
+      const activeV = mapViews[activeViewKey()];
+      if (activeV && activeV.map) {
+        activeV.map.invalidateSize();
+        setTimeout(() => activeV.map.invalidateSize(), 120);
+      }
+    }
+
+    async function load() {
+      if (!IS_EMBED && window.PageLoading) { PageLoading.show(); PageLoading.init(); }
+      if (window.DashNav) DashNav.applyStoredAttributionPanels();
+      initMaps();
+      if (!IS_EMBED) setKpiLoading(true);
+      const zonesPromise = refreshZones().catch(err => { console.error('zone maps:', err); return err; });
+      const bootPromise = IS_EMBED
+        ? Promise.resolve(null)
+        : fetchJson('/api/od/bootstrap').catch(err => { console.error('bootstrap:', err); return null; });
+      const zoneCodesPromise = fetchJson('/api/zone_codes').catch(() => null);
+      const [, , boot, zoneCodes] = await Promise.all([
+        loadMontrealBoundary(), loadCmmZoneBoundaries(), bootPromise, zoneCodesPromise,
+      ]);
+
+      try {
+        bootCache = boot;
+        const zcMap = (boot && boot.zone_codes) || (zoneCodes && zoneCodes.zone_codes);
+        const znMap = (boot && boot.zone_names) || (zoneCodes && zoneCodes.zone_names);
+        if (zcMap && window.DashZoneUi) DashZoneUi.setZoneCodeMap(zcMap);
+        if (znMap && window.DashZoneUi) DashZoneUi.setZoneNameMap(znMap);
+        if (!IS_EMBED) {
+          if (boot && boot.stats) initCharts(boot.by_category);
+          setKpiLoading(false);
+          applyDualKpiStats(boot);
+        }
+        renderPresetChips();
+        const hint = document.getElementById('liveHint');
+        if (hint) hint.textContent = activeViewKey() === 'dest' ? 'Destination zone map' : 'Rules-based zone map';
+        if (window.DashNav) {
+          DashNav.initAttributionTabs({
+            mapViews: mapViews,
+            rulesKey: 'rules',
+            destKey: 'dest',
+            ensureMap: function (key) {
+              ensureMapView(key);
+            },
+            onSwitch: function (key) {
+              ensureMapView(key || activeViewKey());
+              refreshActiveMapView();
+              fitMapView(key || activeViewKey());
+              const h = document.getElementById('liveHint');
+              if (h) h.textContent = activeViewKey() === 'dest' ? 'Destination zone map' : 'Rules-based zone map';
+            },
+          });
+        }
+        document.getElementById('closeZonePanel').addEventListener('click', clearZonePanel);
+        document.getElementById('viewIncomingFlows').addEventListener('click', () => {
+          if (selectedZoneId) navigateToOdFlows(selectedZoneId, selectedZoneBy);
+        });
+        document.getElementById('applyCustomRange').addEventListener('click', async () => {
+          activePresetId = '__custom';
+          const minKg = Number(document.getElementById('customMinKg').value || 0) * 1000;
+          const maxRaw = document.getElementById('customMaxKg').value;
+          const maxKg = maxRaw === '' ? null : Number(maxRaw) * 1000;
+          const raw = await loadDualZoneMaps(minKg, maxKg);
+          applyDualZonePayload(raw);
+          document.querySelectorAll('#presetChips .chip').forEach(c => c.classList.remove('active'));
+        });
+
+        const zoneErr = await zonesPromise;
+        if (zoneErr instanceof Error) {
+          const warn = document.createElement('p');
+          warn.className = 'err';
+          warn.textContent = 'Charts loaded, but zone map failed: ' + zoneErr.message;
+          const main = document.querySelector('.main');
+          if (main) main.insertBefore(warn, main.querySelector('.map-wrap'));
+        }
+        await new Promise(r => setTimeout(r, IS_EMBED ? 50 : 150));
+        invalidateActiveMap();
+        if (IS_EMBED && window.DashEmbed) {
+          const zp = mapViews[activeViewKey()] && mapViews[activeViewKey()].payload;
+          const n = (zp && zp.zones && zp.zones.length) || 0;
+          DashEmbed.notifyDataReady({ zones: n });
+          DashEmbed.syncHint();
+          DashEmbed.notifyReady();
+        } else if (window.PageLoading) {
+          await PageLoading.finish(1100);
+        }
+      } catch (e) {
+        if (!IS_EMBED) setKpiLoading(false);
+        if (IS_EMBED && window.DashEmbed) DashEmbed.notifyReady();
+        if (!IS_EMBED && window.PageLoading) PageLoading.hideNow();
+        const p = document.createElement('p');
+        p.className = 'err';
+        p.textContent = 'OD dashboard failed to load.\n\n' + (e && e.message ? e.message : String(e)) +
+          '\n\nIf you see a 503 missing_table error, run: python scripts/preprocess_dashboard_od10_zone_emissions.py';
+        document.querySelector('.app').appendChild(p);
+        console.error(e);
+      }
+    }
+    if (IS_EMBED && window.DashEmbed) {
+      DashEmbed.bindShow(invalidateActiveMap);
+    }
+    load();
+  </script>
+</body>
+</html>

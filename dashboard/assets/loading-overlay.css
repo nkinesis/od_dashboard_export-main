@@ -1,0 +1,72 @@
+.page-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.42s ease, visibility 0.42s ease;
+}
+.page-loading.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.page-loading.fade-out {
+  opacity: 0;
+}
+.page-loading-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  animation: loadingGlow 1.8s ease-in-out infinite;
+}
+.page-loading-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-loading-img {
+  display: none;
+  max-width: min(440px, 90vw);
+  max-height: min(440px, 72vh);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+/* Do not use filter/transform animations on <img> — they freeze GIF playback in Chrome. */
+.page-loading-img.active {
+  display: block;
+}
+.page-loading-img#loadingCompleteGif.active {
+  animation: none;
+}
+@keyframes loadingGlow {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 0.92; }
+}
+.page-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.12) 2px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  animation: scanlines 4s linear infinite;
+  opacity: 0.35;
+}
+@keyframes scanlines {
+  from { background-position: 0 0; }
+  to { background-position: 0 120px; }
+}

@@ -1,0 +1,1732 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>PopGen · PM23 actual OD · Incoming flows</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="assets/dashboard-redirect-od.js?v=1"></script>
+  <link rel="stylesheet" href="assets/loading-overlay.css?v=10" />
+  <link rel="stylesheet" href="assets/dashboard-nav.css" />
+  <link rel="stylesheet" href="assets/dashboard-shell.css?v=11" />
+  <link rel="stylesheet" href="assets/dashboard-embed.css?v=9" />
+  <script src="assets/dashboard-embed.js?v=1"></script>
+  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script src="assets/loading-overlay.js?v=11"></script>
+  <style>
+    :root {
+      --bg0: #070a0f;
+      --bg1: #0c1119;
+      --surface: #121a26;
+      --surface2: #1a2436;
+      --border: rgba(94, 129, 172, 0.22);
+      --text: #e8eef7;
+      --muted: #8b9cb8;
+      --accent: #5eead4;
+      --radius: 14px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: radial-gradient(1200px 800px at 10% -10%, rgba(56, 189, 248, 0.08), transparent),
+        radial-gradient(900px 600px at 90% 0%, rgba(167, 139, 250, 0.06), transparent),
+        var(--bg0);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: minmax(340px, 420px) 1fr;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+    @media (max-width: 1100px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+    }
+    header.shell {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.5rem;
+      padding: 1rem 1.25rem 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(18, 26, 38, 0.95), rgba(12, 17, 25, 0.6));
+      backdrop-filter: blur(12px);
+    }
+    header.shell h1 {
+      margin: 0;
+      font-family: Outfit, sans-serif;
+      font-weight: 700;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--text), var(--accent));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    header.shell .tagline { color: var(--muted); font-size: 0.88rem; }
+    .sidebar {
+      border-right: 1px solid var(--border);
+      padding: 1rem 1.25rem 1.5rem;
+      overflow-y: auto;
+      max-height: calc(100vh - 64px);
+    }
+    @media (max-width: 1100px) {
+      .sidebar { max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
+    }
+    .main { display: flex; flex-direction: column; min-height: 0; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.65rem;
+      margin-bottom: 1rem;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+    }
+    .kpi .label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.2rem; }
+    .kpi .value { font-family: Outfit, sans-serif; font-size: 1.35rem; font-weight: 600; color: var(--accent); }
+    .kpis.kpi-attribution-active { border: 1px solid rgba(94, 234, 212, 0.35); border-radius: var(--radius); padding: 0.5rem; }
+    .kpis.kpi-attribution-inactive { opacity: 0.55; }
+    .kpi .value.green { color: #4ade80; }
+    .kpi .sub {
+      font-size: 0.68rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.35;
+      font-variant-numeric: tabular-nums;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.85rem 1rem;
+      box-shadow: var(--shadow);
+    }
+    .card h3 { margin: 0 0 0.45rem; font-size: 0.78rem; font-weight: 600; color: var(--muted); font-family: Outfit, sans-serif; }
+    .card p { margin: 0; font-size: 0.82rem; line-height: 1.55; color: var(--muted); }
+    .map-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .map-toolbar strong { color: var(--text); font-weight: 600; }
+    .pill {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.2rem 0.55rem;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .zone-by-toggle { display: inline-flex; gap: 0; padding: 0; overflow: hidden; }
+    .zone-by-toggle button {
+      border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 0.75rem;
+      padding: 0.25rem 0.65rem; cursor: pointer;
+    }
+    .zone-by-toggle button.active { background: rgba(94, 234, 212, 0.18); color: var(--accent); font-weight: 600; }
+    .zone-by-toggle button:not(.active):hover { color: var(--text); }
+    .emissions-legend-wrap {
+      padding: 0.35rem 1rem 0.5rem;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+    }
+    .emissions-legend-gradient {
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid rgba(15, 23, 42, 0.25);
+      background: linear-gradient(90deg, #22c55e 0%, #a3e635 22%, #fde047 48%, #fb923c 72%, #dc2626 100%);
+    }
+    .emissions-legend-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text);
+      margin-top: 0.2rem;
+      font-weight: 600;
+    }
+    .emissions-legend-caption {
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
+    }
+    .flow-zone-label-wrap {
+      background: transparent;
+      border: none;
+      z-index: 1200 !important;
+      pointer-events: none;
+    }
+    .flow-zone-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 7px;
+      background: rgba(12, 17, 25, 0.94);
+      border: 2px solid;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      font-family: Outfit, "DM Sans", sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: #e8eef7;
+      white-space: nowrap;
+      pointer-events: none;
+      line-height: 1.1;
+    }
+    .flow-zone-label .flow-zone-rank {
+      color: #8b9cb8;
+      font-size: 9px;
+      font-weight: 600;
+    }
+    .flow-zone-label .flow-zone-id {
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+    }
+    .map-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 720px;
+      position: relative;
+    }
+    .flow-panel {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: min(440px, calc(100% - 24px));
+      max-height: min(640px, calc(100% - 24px));
+      overflow: auto;
+      background: rgba(12, 17, 25, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1rem;
+      z-index: 1000;
+      backdrop-filter: blur(14px);
+    }
+    .err { color: #fda4af; padding: 0.5rem 0; font-size: 0.82rem; line-height: 1.45; }
+    .zone-selected { filter: drop-shadow(0 0 5px var(--accent)); }
+    .zone-selected-strong {
+      filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 10px #00e5ff);
+      animation: selPulse 1.6s ease-in-out infinite;
+    }
+    @keyframes selPulse {
+      0%, 100% { filter: drop-shadow(0 0 3px #ffffff) drop-shadow(0 0 8px #00e5ff); }
+      50% { filter: drop-shadow(0 0 6px #ffffff) drop-shadow(0 0 16px #00e5ff); }
+    }
+  </style>
+</head>
+<body data-dash-page="od-flows" data-flows-ui="20260603-od">
+  <div id="pageLoading" class="page-loading hidden" aria-live="polite">
+    <div class="page-loading-backdrop" aria-hidden="true"></div>
+    <div class="page-loading-content">
+      <img id="loadingGif" class="page-loading-img active" src="assets/gif-loading1-static.jpg?v=9" alt="Loading">
+    </div>
+  </div>
+  <div class="app">
+    <header class="shell">
+      <div>
+        <h1>Actual OD survey · PM23 incoming flows</h1>
+        <div class="tagline">Greater Montreal · PM23 actual OD</div>
+      </div>
+      <nav class="dash-nav" aria-label="OD dashboard views">
+        <a class="dash-nav-link" data-page="od-zones" href="/?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="/?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="/?view=flows">Flows</a>
+        <a class="dash-nav-link" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+      </nav>
+      <span class="pill" id="liveHint">Incoming flows</span>
+    </header>
+
+    <aside class="sidebar">
+      <div class="kpis" id="kpis-rules">
+        <div class="kpi-section-title">Rules-based zone map</div>
+        <div class="kpi">
+          <div class="label">Car trips</div>
+          <div class="value" id="kpi-rules-trips">—</div>
+          <div class="sub" id="kpi-rules-trips-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">CO₂ (kg)</div>
+          <div class="value" id="kpi-rules-co2">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Distance (km)</div>
+          <div class="value" id="kpi-rules-km">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg kg / trip</div>
+          <div class="value green" id="kpi-rules-avg">—</div>
+        </div>
+      </div>
+      <div class="kpis" id="kpis-dest" style="margin-top:0.5rem">
+        <div class="kpi-section-title">Destination zone map</div>
+        <div class="kpi">
+          <div class="label">Car trips</div>
+          <div class="value" id="kpi-dest-trips">—</div>
+          <div class="sub" id="kpi-dest-trips-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">CO₂ (kg)</div>
+          <div class="value" id="kpi-dest-co2">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Distance (km)</div>
+          <div class="value" id="kpi-dest-km">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg kg / trip</div>
+          <div class="value green" id="kpi-dest-avg">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Incoming flows</h3>
+        <p id="flowsHelpText">Click a zone, then page through origin zones ranked by CO₂ (1–10, 11–20, …).</p>
+      </div>
+    </aside>
+
+    <section class="main">
+      <div class="map-top-strip">
+        <div class="map-top-filters map-top-filters--flows">
+          <span class="pill map-top-count" id="zoneCount">zones: —</span>
+          <label class="pill" id="flowLimitLabel" style="gap:0.35rem">
+            Origins
+            <select id="flowDisplayPage" aria-label="Origin zone rank range" style="background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:2px 4px">
+              <option value="1" selected>1–10</option>
+            </select>
+            by CO₂
+          </label>
+        </div>
+        <div class="map-top-legend-row">
+          <div class="emissions-legend-wrap">
+            <div class="emissions-legend-gradient" aria-hidden="true"></div>
+            <div class="emissions-legend-ticks">
+              <span id="legendMin">—</span>
+              <span id="legendMax">—</span>
+            </div>
+            <div class="emissions-legend-caption" id="legendCaption">Zone emissions · t CO₂e</div>
+          </div>
+          <nav class="dash-subnav map-toolbar-attribution" data-attribution-nav aria-label="Zone attribution">
+            <button type="button" class="dash-subnav-link active" data-attribution="rules">Rules-based</button>
+            <button type="button" class="dash-subnav-link" data-attribution="dest">Destination zone</button>
+          </nav>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div class="maps-section">
+          <div class="maps-single-wrap" style="flex:1;min-height:0;position:relative">
+            <div class="maps-single">
+              <div id="map" class="map-el-full"></div>
+            </div>
+            <div class="flow-panel flows-detail-panel open" id="flowsSidePanel">
+          <p class="hint" id="hint">Starting flows page…</p>
+
+          <div id="kpiBlock" style="display:none">
+            <div class="flows-kpi-grid">
+              <div class="kpi">
+                <div class="label" id="kpiZoneTotalLabel">Zone total (rules map)</div>
+                <div class="value" id="kpiRulesTrips">—</div>
+                <div class="subv" id="kpiRulesTripsLegs"></div>
+                <div class="subv" id="kpiRulesCo2">—</div>
+                <div class="subv" id="kpiRulesKm">—</div>
+              </div>
+              <div class="kpi">
+                <div class="label">Incoming trips</div>
+                <div class="value" id="kpiIncomingTrips">—</div>
+                <div class="subv" id="kpiIncomingTripsNote"></div>
+                <div class="subv" id="kpiIncomingKm">—</div>
+              </div>
+              <div class="kpi wide" id="kpiOriginsBlock" style="display:none">
+                <div class="label">Origins contributing</div>
+                <div class="value" id="kpiOrigins">—</div>
+                <div class="subv" id="kpiShown">—</div>
+              </div>
+            </div>
+            <div class="flows-top-origin" id="topOriginBox" style="display:none"></div>
+          </div>
+
+          <div class="filters" id="tableMeta"></div>
+          <div id="err" class="err" style="display:none"></div>
+          <div id="emptyFlows" class="flows-empty">Click any zone on the map to see where its incoming car trips come from.</div>
+          <div class="flows-table-wrap">
+            <table id="flowTable" style="display:none">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Origin zone</th>
+                  <th>Trips</th>
+                  <th>% in.</th>
+                  <th>kg CO₂</th>
+                  <th>% CO₂</th>
+                  <th>km</th>
+                  <th>% km</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="assets/dashboard-nav.js?v=13"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const IS_EMBED = !!(window.DashEmbed && DashEmbed.isEmbed);
+    const CACHE_TTL_MS = 60 * 60 * 1000;
+    const qs = new URLSearchParams(window.location.search);
+    let destGeoId = (qs.get('dest_geo_id') || '').trim();
+    function resolveInitialZoneBy() {
+      if (window.DashNav) return DashNav.readAttribution('rules');
+      var v = (qs.get('zone_by') || qs.get('attribution') || 'rules').trim().toLowerCase();
+      if (v === 'meeting') v = 'rules';
+      return v === 'dest' ? 'dest' : 'rules';
+    }
+    const FLOW_PAGE_SIZE = 10;
+    let zoneBy = resolveInitialZoneBy();
+    function parseFlowPageState(rawPage, rawLegacyLimit) {
+      if (rawLegacyLimit != null && rawLegacyLimit !== '') {
+        const leg = String(rawLegacyLimit).trim().toLowerCase();
+        if (leg === '0' || leg === 'all') return { page: 1, showAll: true };
+        const n = parseInt(leg, 10);
+        if (Number.isFinite(n) && n > 0) {
+          return { page: Math.max(1, Math.ceil(n / FLOW_PAGE_SIZE)), showAll: false };
+        }
+      }
+      const p = String(rawPage != null && rawPage !== '' ? rawPage : '1').trim().toLowerCase();
+      if (p === 'all' || p === '0') return { page: 1, showAll: true };
+      const n = parseInt(p, 10);
+      return { page: Number.isFinite(n) && n > 0 ? n : 1, showAll: false };
+    }
+    const _flowPageInit = parseFlowPageState(qs.get('flow_page'), qs.get('flow_limit'));
+    let flowPage = _flowPageInit.page;
+    let flowShowAll = _flowPageInit.showAll;
+    const islandOnly = (qs.get('island_only') || '1') !== '0';
+    let flowSummary = null;
+
+    const EMISSION_COLOR_STOPS = [
+      { t: 0, c: '#22c55e' }, { t: 0.22, c: '#a3e635' }, { t: 0.48, c: '#fde047' },
+      { t: 0.72, c: '#fb923c' }, { t: 1, c: '#dc2626' },
+    ];
+    const FLOW_ARC_COLORS = [
+      '#38bdf8', '#4ade80', '#fbbf24', '#a78bfa', '#fb7185',
+      '#22d3ee', '#84cc16', '#f97316', '#818cf8', '#2dd4bf',
+    ];
+    let zonePayload = { zones: [], geojson: null };
+    let zoneEmissionScale = { minG: 0, maxG: 1 };
+    let zoneLayer = null;
+    let boundaryLayer = null;
+    let zonesBoundaryLayer = null;
+    let map = null;
+    let flowArcLayer = null;
+    let flowLabelLayer = null;
+    let mapInitialFitDone = false;
+    let incomingOriginGeoIds = new Set();
+    let allFlows = [];
+    let flowsLoadSeq = 0;
+    let flowsFetchAbort = null;
+    // Top-N incoming flows for every zone, fetched once and served from memory.
+    let allFlowsCache = null;     // { [destGeoId]: payload } once loaded, else null
+    let allFlowsPromise = null;   // in-flight bulk fetch
+
+    function apiBase() {
+      const override = (qs.get('api') || '').trim().replace(/\/$/, '');
+      if (override) return override;
+      if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
+      return '';
+    }
+    const API = apiBase();
+    const CACHE_KEY = () => 'popgen_od_flows_zone_v3_cmm_' + zoneBy + '_' + (API || 'same') + '_island';
+    let polygonUpgradePromise = null;
+
+    function flowsAllCacheKey() {
+      return 'popgen_od_flows_all_v3_' + zoneBy + '_' + (API || 'same') + '_pm23_all';
+    }
+
+    function flowPageLabel(total) {
+      const n = Number(total != null ? total : allFlows.length) || 0;
+      if (flowShowAll) return 'all ' + n;
+      const start = (flowPage - 1) * FLOW_PAGE_SIZE + 1;
+      const end = Math.min(flowPage * FLOW_PAGE_SIZE, n || flowPage * FLOW_PAGE_SIZE);
+      return start + '–' + end;
+    }
+
+    function rebuildFlowPageOptions(totalOrigins) {
+      const sel = document.getElementById('flowDisplayPage');
+      if (!sel) return;
+      const total = Math.max(0, Number(totalOrigins) || 0);
+      const pages = Math.max(1, Math.ceil(Math.max(total, 1) / FLOW_PAGE_SIZE));
+      if (!flowShowAll && flowPage > pages) flowPage = pages;
+      sel.innerHTML = '';
+      for (let p = 1; p <= pages; p++) {
+        const start = (p - 1) * FLOW_PAGE_SIZE + 1;
+        const end = Math.min(p * FLOW_PAGE_SIZE, total || p * FLOW_PAGE_SIZE);
+        const opt = document.createElement('option');
+        opt.value = String(p);
+        opt.textContent = start + '–' + end;
+        sel.appendChild(opt);
+      }
+      if (total > FLOW_PAGE_SIZE) {
+        const opt = document.createElement('option');
+        opt.value = 'all';
+        opt.textContent = 'All (' + total + ')';
+        sel.appendChild(opt);
+      }
+      syncFlowPageUi();
+    }
+
+    function syncFlowPageUi() {
+      const sel = document.getElementById('flowDisplayPage');
+      if (!sel) return;
+      sel.value = flowShowAll ? 'all' : String(flowPage);
+    }
+    function zoneCt(geoId, meta) {
+      if (window.DashZoneUi && DashZoneUi.zoneLabel) {
+        return DashZoneUi.zoneLabel(geoId, meta || {});
+      }
+      if (meta && meta.zone_code) return String(meta.zone_code);
+      if (meta && meta.dest_zone_code) return String(meta.dest_zone_code);
+      return String(geoId != null ? geoId : '');
+    }
+
+    function zoneMapModeLabel() {
+      return zoneBy === 'dest' ? 'Destination zone' : 'Rules-based';
+    }
+    function zoneTotalKpiLabel() {
+      return zoneBy === 'dest'
+        ? 'Zone total (destination map)'
+        : 'Zone total (rules-based map)';
+    }
+
+    function zoneTripsExpanded(zm, fallback) {
+      if (!zm) return Number(fallback) || 0;
+      return Number(zm.trips_weighted != null ? zm.trips_weighted : (zm.trips != null ? zm.trips : fallback)) || 0;
+    }
+
+    function updateSidebarKpiHighlight() {
+      const rulesBlock = document.getElementById('kpis-rules');
+      const destBlock = document.getElementById('kpis-dest');
+      if (rulesBlock) {
+        rulesBlock.classList.toggle('kpi-attribution-active', zoneBy === 'rules');
+        rulesBlock.classList.toggle('kpi-attribution-inactive', zoneBy !== 'rules');
+      }
+      if (destBlock) {
+        destBlock.classList.toggle('kpi-attribution-active', zoneBy === 'dest');
+        destBlock.classList.toggle('kpi-attribution-inactive', zoneBy !== 'dest');
+      }
+    }
+
+    function updateZoneByUi() {
+      const cap = document.getElementById('legendCaption');
+      if (cap) cap.textContent = zoneMapModeLabel() + ' · t CO₂e';
+      updateSidebarKpiHighlight();
+      const n = (zonePayload.zones && zonePayload.zones.length)
+        || (zonePayload.geojson && zonePayload.geojson.features && zonePayload.geojson.features.length)
+        || 0;
+      const countEl = document.getElementById('zoneCount');
+      if (countEl) countEl.textContent = 'zones: ' + Number(n).toLocaleString();
+      const zoneLblEl = document.getElementById('kpiZoneTotalLabel');
+      if (zoneLblEl) zoneLblEl.textContent = zoneTotalKpiLabel();
+      const live = document.getElementById('liveHint');
+      if (live) {
+        live.textContent = destGeoId
+          ? (zoneMapModeLabel() + ' · ' + zoneCt(destGeoId, zoneMetaFromPayload(destGeoId)))
+          : (zoneMapModeLabel() + ' · incoming flows');
+      }
+    }
+    async function switchZoneBy(next) {
+      const zb = next === 'dest' ? 'dest' : 'rules';
+      if (zb === zoneBy) return;
+      zoneBy = zb;
+      allFlowsCache = null;
+      allFlowsPromise = null;
+      mapInitialFitDone = false;
+      try { sessionStorage.removeItem(CACHE_KEY()); } catch (_) {}
+      try { sessionStorage.removeItem(flowsAllCacheKey()); } catch (_) {}
+      updateZoneByUi();
+      syncUrl();
+      clearFlowLayers();
+      incomingOriginGeoIds = new Set();
+      allFlows = [];
+      flowSummary = null;
+      setHintLoading('Loading ' + zoneMapModeLabel().toLowerCase() + '…');
+      await loadZoneMapCurrent(true);
+      applyZonePayload();
+      if (map) {
+        map.invalidateSize();
+        window.setTimeout(() => map.invalidateSize(), 120);
+      }
+      polygonUpgradePromise = Promise.resolve();
+      const bulkP = loadAllFlows();
+      if (destGeoId) {
+        setHintLoading('Loading incoming flows for <strong class="sel">' + zoneCt(destGeoId, zoneMetaFromPayload(destGeoId)) + '</strong>…');
+        await loadIncomingFlows();
+      } else {
+        setHintReady();
+      }
+      bulkP.then(() => { if (destGeoId && allFlowsCache) loadIncomingFlows().catch(() => {}); });
+    }
+
+    function showLoadError(err) {
+      if (window.PageLoading) PageLoading.hideNow();
+      const el = document.getElementById('err');
+      el.style.display = 'block';
+      el.textContent = String(err && err.message ? err.message : err);
+      document.getElementById('emptyFlows').style.display = 'none';
+      console.error(err);
+    }
+
+    window.addEventListener('error', (ev) => {
+      if (ev.message) showLoadError(new Error(ev.message));
+    });
+
+    function initMap() {
+      if (map) return map;
+      if (typeof L === 'undefined') {
+        throw new Error('Leaflet did not load (check network / unpkg.com).');
+      }
+      map = L.map('map', { preferCanvas: true }).setView([45.52, -73.68], 10);
+      map.createPane('zoneBgPane');
+      map.getPane('zoneBgPane').style.zIndex = 400;
+      map.createPane('zonePane');
+      map.getPane('zonePane').style.zIndex = 450;
+      map.createPane('flowPane');
+      map.getPane('flowPane').style.zIndex = 650;
+      map.getPane('flowPane').style.pointerEvents = 'none';
+      map.createPane('flowLabelPane');
+      map.getPane('flowLabelPane').style.zIndex = 720;
+      map.getPane('flowLabelPane').style.pointerEvents = 'none';
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 20,
+      }).addTo(map);
+      flowArcLayer = L.layerGroup().addTo(map);
+      flowLabelLayer = L.layerGroup().addTo(map);
+      map.fitBounds([[45.38, -74.0], [45.68, -73.35]], { animate: false });
+      return map;
+    }
+
+    function clearFlowLayers() {
+      flowArcLayer?.clearLayers();
+      flowLabelLayer?.clearLayers();
+    }
+
+    async function loadCmmZoneBoundaries() {
+      try {
+        const raw = await fetchJson('/api/od/zones_boundary?island_only=0', 120000);
+        const gj = raw && raw.geojson;
+        if (!gj || gj.type !== 'FeatureCollection' || !gj.features?.length || !map) return;
+        if (zonesBoundaryLayer) {
+          map.removeLayer(zonesBoundaryLayer);
+          zonesBoundaryLayer = null;
+        }
+        zonesBoundaryLayer = L.geoJSON(gj, {
+          pane: 'zoneBgPane',
+          interactive: false,
+          style: () => ({
+            color: 'rgba(148, 163, 184, 0.42)',
+            weight: 0.85,
+            opacity: 0.55,
+            fillOpacity: 0,
+            fill: false,
+          }),
+        }).addTo(map);
+      } catch (e) {
+        console.warn('CMM zone boundaries:', e);
+      }
+    }
+
+    async function loadMontrealBoundary() {
+      try {
+        const gj = await fetchJson('/api/montreal_boundary.geojson');
+        if (!gj || gj.type !== 'FeatureCollection' || !gj.features?.length || !map) return;
+        if (boundaryLayer) {
+          map.removeLayer(boundaryLayer);
+          boundaryLayer = null;
+        }
+        boundaryLayer = L.geoJSON(gj, {
+          interactive: false,
+          style: () => ({
+            color: '#14b8a6',
+            weight: 2.5,
+            opacity: 0.9,
+            fillColor: '#2dd4bf',
+            fillOpacity: 0.07,
+          }),
+        }).addTo(map);
+        try {
+          const b = boundaryLayer.getBounds();
+          if (b && b.isValid && b.isValid()) {
+            map.fitBounds(b.pad(0.05), { maxZoom: 11, animate: false });
+            mapInitialFitDone = true;
+          }
+        } catch (_) {}
+      } catch (e) {
+        console.warn('Montreal boundary:', e);
+      }
+    }
+
+    async function fetchJson(path, timeoutMs, parentSignal) {
+      const ms = timeoutMs == null ? 180000 : timeoutMs;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ms);
+      if (parentSignal) {
+        if (parentSignal.aborted) {
+          clearTimeout(timer);
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          throw err;
+        }
+        parentSignal.addEventListener('abort', () => ctrl.abort(), { once: true });
+      }
+      try {
+        const r = await fetch((API || '') + path, { signal: ctrl.signal, cache: 'no-store' });
+        const text = await r.text();
+        if (!r.ok) {
+          let detail = (text || '').trim() || r.statusText;
+          try {
+            const j = JSON.parse(text);
+            if (j.message) detail = j.message;
+            else if (j.error) detail = String(j.error) + (j.message ? ': ' + j.message : '');
+          } catch (_) {}
+          throw new Error('HTTP ' + r.status + ': ' + detail);
+        }
+        return text ? JSON.parse(text) : {};
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          if (parentSignal && parentSignal.aborted) throw e;
+          throw new Error('Request timed out after ' + Math.round(ms / 1000) + 's. Is the dashboard server running?');
+        }
+        throw e;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function flowsMatchDest(data) {
+      return data && String(data.dest_geo_id || destGeoId) === String(destGeoId);
+    }
+
+    function fmt(n) { return Number(n || 0).toLocaleString(); }
+    function fmtTrip(n) {
+      if (!Number.isFinite(Number(n))) return '—';
+      return window.DashZoneUi ? DashZoneUi.formatTrips(n) : String(Math.round(Number(n) || 0));
+    }
+    function fmtKg(g) { return Math.round((Number(g) || 0) / 1000).toLocaleString(); }
+    function totalEmissionsKg(statsOrG) {
+      if (statsOrG && typeof statsOrG === 'object') {
+        const g = Number(statsOrG.total_emissions_g);
+        if (Number.isFinite(g)) return Math.round(g / 1000);
+        const t = Number(statsOrG.total_emissions_tonnes);
+        if (Number.isFinite(t)) return Math.round(t * 1000);
+        return null;
+      }
+      return Math.round((Number(statsOrG) || 0) / 1000);
+    }
+    function avgEmissionsKgPerTrip(avgG) {
+      const g = Number(avgG);
+      return Number.isFinite(g) ? Math.round(g / 1000) : null;
+    }
+    function formatDistanceKm(km) {
+      const n = Number(km);
+      if (!Number.isFinite(n) || n < 0) return null;
+      if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M km';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k km';
+      return n.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' km';
+    }
+    function fmtDist(km) {
+      const d = formatDistanceKm(km);
+      return d || '— km';
+    }
+    function zonesByIdFromList(zones) {
+      if (window.DashZoneUi && DashZoneUi.zonesByIdFromList) {
+        return DashZoneUi.zonesByIdFromList(zones);
+      }
+      const m = {};
+      (zones || []).forEach(z => {
+        if (z && z.geo_id != null) m[String(z.geo_id)] = z;
+      });
+      return m;
+    }
+    function resolveZoneDistanceKm(propsOrZone, zonesById) {
+      if (window.DashZoneUi && DashZoneUi.resolveZoneDistanceKm) {
+        return DashZoneUi.resolveZoneDistanceKm(propsOrZone, zonesById);
+      }
+      if (!propsOrZone) return null;
+      let km = propsOrZone.total_distance_km;
+      if ((km == null || km === '') && zonesById && propsOrZone.geo_id != null) {
+        const z = zonesById[String(propsOrZone.geo_id)];
+        if (z && z.total_distance_km != null) km = z.total_distance_km;
+      }
+      return km;
+    }
+    function zoneTooltipHtml(zid, propsOrZone, zonesById, zoneDistById, clickHint) {
+      let body;
+      if (window.DashZoneUi && DashZoneUi.zoneTooltipHtml) {
+        body = DashZoneUi.zoneTooltipHtml(zid, propsOrZone, zonesById, zoneDistById);
+        if (clickHint) body = body.replace('</div>', clickHint + '</div>');
+        return body;
+      }
+      const row = propsOrZone || {};
+      const t = ((Number(row.total_emissions_g) || 0) / 1e6).toFixed(1) + ' t';
+      const trips = fmtTrip(row.trips) + ' trips';
+      const dist = formatDistanceKm(resolveZoneDistanceKm(row, zonesById));
+      body = '<strong>' + zoneCt(zid, row) + '</strong><br>' + t + ' · ' + trips + (dist ? (' · ' + dist) : '');
+      if (clickHint) body += clickHint;
+      return body;
+    }
+    function pctOf(part, total) {
+      if (!total) return '—';
+      return ((part / total) * 100).toFixed(1) + '%';
+    }
+
+    function mixHex(a, b, u) {
+      const pa = a.slice(1).match(/.{2}/g).map(x => parseInt(x, 16));
+      const pb = b.slice(1).match(/.{2}/g).map(x => parseInt(x, 16));
+      const o = pa.map((v, i) => Math.round(v + (pb[i] - v) * u));
+      return '#' + o.map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+    function colorFromStops(stops, tNorm) {
+      const t = Math.max(0, Math.min(1, tNorm));
+      for (let i = 1; i < stops.length; i++) {
+        if (t <= stops[i].t) {
+          const a = stops[i - 1], b = stops[i];
+          return mixHex(a.c, b.c, (t - a.t) / (b.t - a.t || 1));
+        }
+      }
+      return stops[stops.length - 1].c;
+    }
+    function collectEmissionsG(payload) {
+      const vals = [];
+      (payload?.zones || []).forEach(z => { const g = +z.total_emissions_g; if (g > 0) vals.push(g); });
+      (payload?.geojson?.features || []).forEach(f => {
+        const g = +(f.properties?.total_emissions_g); if (g > 0) vals.push(g);
+      });
+      return vals;
+    }
+    function updateScale() {
+      const vals = collectEmissionsG(zonePayload);
+      zoneEmissionScale = vals.length
+        ? { minG: Math.min(...vals), maxG: Math.max(...vals) }
+        : { minG: 0, maxG: 1 };
+      const { minG, maxG } = zoneEmissionScale;
+      const fmtLegendT = (g) => {
+        const t = (Number(g) || 0) / 1e6;
+        return t >= 100 ? Math.round(t).toLocaleString() : (Math.round(t * 10) / 10).toLocaleString();
+      };
+      const elMin = document.getElementById('legendMin');
+      const elMid = document.getElementById('legendMid');
+      const elMax = document.getElementById('legendMax');
+      if (elMin) elMin.textContent = fmtLegendT(minG);
+      if (elMid) elMid.textContent = fmtLegendT((minG + maxG) / 2);
+      if (elMax) elMax.textContent = fmtLegendT(maxG);
+      const n = (zonePayload.zones && zonePayload.zones.length)
+        || (zonePayload.geojson && zonePayload.geojson.features && zonePayload.geojson.features.length)
+        || 0;
+      const countEl = document.getElementById('zoneCount');
+      if (countEl) countEl.textContent = 'zones: ' + Number(n).toLocaleString();
+    }
+    function emissionNormFromG(g) {
+      const { minG, maxG } = zoneEmissionScale;
+      if (maxG <= minG) return 0;
+      return Math.max(0, Math.min(1, Math.pow((g - minG) / (maxG - minG), 0.72)));
+    }
+    function emissionColor(tNorm) { return colorFromStops(EMISSION_COLOR_STOPS, tNorm); }
+    function choroplethFill(g) { return emissionColor(emissionNormFromG(g)); }
+    function parseZoneMapResponse(raw) {
+      if (window.DashZoneUi && DashZoneUi.parseZoneMapResponse) {
+        return DashZoneUi.parseZoneMapResponse(raw);
+      }
+      if (Array.isArray(raw)) return { zones: raw, geojson: null };
+      const zones = Array.isArray(raw.zones) ? raw.zones : [];
+      let gj = raw.geojson && raw.geojson.type === 'FeatureCollection' && Array.isArray(raw.geojson.features)
+        ? raw.geojson
+        : null;
+      if (gj && zones.length) {
+        const byId = zonesByIdFromList(zones);
+        gj.features.forEach(f => {
+          if (!f.properties) return;
+          const z = byId[String(f.properties.geo_id)];
+          if (z && z.total_distance_km != null) f.properties.total_distance_km = z.total_distance_km;
+        });
+      }
+      return { zones, geojson: gj };
+    }
+    function zoneMetaFromPayload(geoId) {
+      const id = String(geoId);
+      const f = (zonePayload.geojson?.features || []).find(ft => String(ft.properties?.geo_id) === id);
+      if (f) return f.properties;
+      return (zonePayload.zones || []).find(z => String(z.geo_id) === id) || null;
+    }
+
+    // Zone anchor from choropleth payload (PointOnSurface / trip snap for placeholder zones).
+    function zoneCentroid(geoId) {
+      const zm = zoneMetaFromPayload(geoId);
+      if (zm && Number.isFinite(+zm.lat) && Number.isFinite(+zm.lon)) {
+        return [+zm.lat, +zm.lon];
+      }
+      return null;
+    }
+
+    function flowOriginLatLon(f) {
+      if (f && Number.isFinite(+f.orig_lat) && Number.isFinite(+f.orig_lon)) {
+        return [+f.orig_lat, +f.orig_lon];
+      }
+      return zoneCentroid(f && f.orig_geo_id);
+    }
+
+    function destLatLonForMap() {
+      if (flowSummary && Number.isFinite(+flowSummary.dest_lat) && Number.isFinite(+flowSummary.dest_lon)) {
+        return [+flowSummary.dest_lat, +flowSummary.dest_lon];
+      }
+      const c = zoneCentroid(destGeoId);
+      if (c) return c;
+      return null;
+    }
+
+    function syncUrl() {
+      if (window.DashNav) DashNav.saveAttribution(zoneBy);
+      const p = IS_EMBED
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+      if (destGeoId) p.set('dest_geo_id', destGeoId);
+      else p.delete('dest_geo_id');
+      p.delete('limit');
+      p.delete('flow_limit');
+      if (flowShowAll) p.set('flow_page', 'all');
+      else if (flowPage > 1) p.set('flow_page', String(flowPage));
+      else p.delete('flow_page');
+      p.set('island_only', islandOnly ? '1' : '0');
+      if (zoneBy === 'dest') p.set('attribution', 'dest');
+      else {
+        p.delete('attribution');
+        if (!IS_EMBED) p.set('zone_by', 'rules');
+        else p.delete('zone_by');
+      }
+      if (API) p.set('api', API);
+      const path = IS_EMBED
+        ? window.location.pathname
+        : (window.location.pathname.split('/').pop() || 'od-flows.html');
+      history.replaceState(null, '', path + '?' + p.toString());
+    }
+
+    function renderZones(fitAll) {
+      if (!map) return;
+      if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
+      const fc = zonePayload.geojson;
+      const zones = zonePayload.zones || [];
+      const zonesById = zonesByIdFromList(zones);
+      const zoneDistById = zonePayload.zoneDistById || {};
+
+      const bindClick = (layer, zid) => {
+        layer.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          selectZone(zid);
+        });
+      };
+
+      if (fc?.features?.length) {
+        zoneLayer = L.geoJSON(fc, {
+          pane: 'zonePane',
+          filter(feature) {
+            const t = feature.geometry && feature.geometry.type;
+            return t === 'Polygon' || t === 'MultiPolygon';
+          },
+          style(feature) {
+            const p = feature.properties || {};
+            const zid = String(p.geo_id);
+            const isSel = destGeoId && zid === String(destGeoId);
+            const isIncoming = incomingOriginGeoIds.has(zid);
+            const t = emissionNormFromG(p.total_emissions_g);
+            if (isSel) {
+              return {
+                fillColor: '#00e5ff',
+                fillOpacity: 0.75,
+                color: '#ffffff',
+                weight: 4,
+                opacity: 1,
+                className: 'zone-selected-strong',
+              };
+            }
+            return {
+              fillColor: isIncoming ? '#22c55e' : emissionColor(t),
+              fillOpacity: isIncoming ? 0.82 : 0.78,
+              color: isIncoming ? '#14532d' : '#166534',
+              weight: isIncoming ? 2.5 : 1.15,
+              opacity: 0.95,
+              className: isIncoming ? 'zone-selected' : '',
+            };
+          },
+          onEachFeature(feature, layer) {
+            const p = feature.properties || {};
+            const zid = String(p.geo_id);
+            layer.bindTooltip(
+              zoneTooltipHtml(zid, p, zonesById, zoneDistById, '<br>click to explore incoming'),
+              { sticky: true }
+            );
+            bindClick(layer, zid);
+            if (destGeoId && zid === String(destGeoId)) {
+              try { layer.bringToFront(); } catch (_) {}
+            }
+          },
+        }).addTo(map);
+        if (fitAll && !mapInitialFitDone) {
+          try {
+            map.fitBounds(zoneLayer.getBounds(), { padding: [28, 28], maxZoom: 11 });
+            mapInitialFitDone = true;
+          } catch (_) {}
+        }
+        return;
+      }
+
+      // Flows map expects zone polygons; skip centroid dots (flash of green markers on attribution switch).
+      if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
+    }
+
+    function quadBezierLatLngs(p0, p1c, p2, n) {
+      const out = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, u = 1 - t;
+        out.push([u*u*p0[0]+2*u*t*p1c[0]+t*t*p2[0], u*u*p0[1]+2*u*t*p1c[1]+t*t*p2[1]]);
+      }
+      return out;
+    }
+    function controlPointForArc(o, d) {
+      const mid = [(o[0]+d[0])/2, (o[1]+d[1])/2];
+      const dx = d[1]-o[1], dy = d[0]-o[0], len = Math.hypot(dx, dy) || 1e-6;
+      return [mid[0] - (dy/len)*0.12*len, mid[1] + (dx/len)*0.12*len];
+    }
+    function emissionWeight(f) { return f.total_emissions_g || 0; }
+
+    // Directional arrowhead along an arc, pointing toward the destination (incoming).
+    function addFlowArrow(arc, col, sizePx) {
+      const n = arc.length;
+      if (n < 3 || !map) return;
+      const i = Math.max(1, Math.min(n - 2, Math.round((n - 1) * 0.72)));
+      let angle = 0;
+      try {
+        const pa = map.latLngToContainerPoint(arc[i - 1]);
+        const pb = map.latLngToContainerPoint(arc[i + 1]);
+        angle = Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI;
+      } catch (_) { return; }
+      const s = sizePx || 8;
+      const html =
+        '<div style="width:0;height:0;' +
+        'border-top:' + s + 'px solid transparent;border-bottom:' + s + 'px solid transparent;' +
+        'border-left:' + (s * 1.6) + 'px solid ' + col + ';' +
+        'filter:drop-shadow(0 0 2px rgba(0,0,0,0.55));' +
+        'transform:rotate(' + angle + 'deg);transform-origin:center"></div>';
+      const icon = L.divIcon({
+        className: 'flow-arrow',
+        html: html,
+        iconSize: [s * 1.6, s * 2],
+        iconAnchor: [s * 0.8, s],
+      });
+      L.marker(arc[i], { icon, pane: 'flowPane', interactive: false, keyboard: false }).addTo(flowArcLayer);
+    }
+
+    function flowUiScale() {
+      const w = document.documentElement.clientWidth || window.innerWidth || 1200;
+      if (w < 520) return 0.72;
+      if (w < 800) return 0.82;
+      if (w < 1100) return 0.9;
+      return 1;
+    }
+
+    function flowZoneLabelIcon(ctCode, col, rank) {
+      const code = String(ctCode || '');
+      const scale = flowUiScale();
+      const fs = Math.max(8, Math.round(11 * scale));
+      const html =
+        '<div class="flow-zone-label" style="border-color:' + col + ';font-size:' + fs + 'px">' +
+        '<span class="flow-zone-rank">#' + rank + '</span>' +
+        '<span class="flow-zone-id">' + code + '</span></div>';
+      const w = Math.max(56, Math.round((36 + code.length * 6) * scale));
+      const h = Math.max(18, Math.round(24 * scale));
+      return L.divIcon({
+        className: 'flow-zone-label-wrap',
+        html: html,
+        iconSize: [w, h],
+        iconAnchor: [w / 2, h / 2],
+      });
+    }
+
+    function destZoneLabelIcon(ctCode) {
+      const code = String(ctCode || '');
+      const scale = flowUiScale();
+      const fs = Math.max(8, Math.round(11 * scale));
+      const html =
+        '<div class="flow-zone-label flow-zone-label-dest" style="border-color:#06b6d4;font-size:' + fs + 'px">' +
+        '<span class="flow-zone-id">Dest ' + code + '</span></div>';
+      const w = Math.max(64, Math.round((40 + code.length * 6) * scale));
+      const h = Math.max(18, Math.round(24 * scale));
+      return L.divIcon({
+        className: 'flow-zone-label-wrap',
+        html: html,
+        iconSize: [w, h],
+        iconAnchor: [w / 2, h / 2],
+      });
+    }
+
+    function addFlowZoneLabel(originLatLng, ctCode, col, rank) {
+      if (!originLatLng || !map || !flowLabelLayer) return;
+      L.marker(originLatLng, {
+        icon: flowZoneLabelIcon(ctCode, col, rank),
+        pane: 'flowLabelPane',
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 1000 + rank,
+      }).addTo(flowLabelLayer);
+    }
+
+    function renderFlowsOnMap(flows) {
+      if (!flowArcLayer || !flowLabelLayer) return;
+      clearFlowLayers();
+      if (!flows.length || !destGeoId) return;
+      const bounds = [];
+      const destPt = destLatLonForMap();
+      const topW = Math.max(emissionWeight(flows[0]), 1);
+      const labelQueue = [];
+      flows.forEach((f, idx) => {
+        const o = flowOriginLatLon(f);
+        const d = destPt || [+f.dest_lat, +f.dest_lon];
+        if (!o || !Number.isFinite(o[0]) || !Number.isFinite(d[0])) return;
+        const arc = quadBezierLatLngs(o, controlPointForArc(o, d), d, 32);
+        const col = FLOW_ARC_COLORS[idx % FLOW_ARC_COLORS.length];
+        const w = 3 + Math.sqrt(emissionWeight(f) / topW) * 7;
+        const isTop = idx === 0;
+        L.polyline(arc, {
+          color: col,
+          weight: w + 4,
+          opacity: 0.35,
+          lineCap: 'round',
+          pane: 'flowPane',
+          interactive: false,
+        }).addTo(flowArcLayer);
+        L.polyline(arc, {
+          color: col,
+          weight: isTop ? w + 2 : w,
+          opacity: isTop ? 1 : 0.92,
+          lineCap: 'round',
+          pane: 'flowPane',
+          interactive: true,
+        })
+          .bindTooltip(
+            '<strong>Origin ' + zoneCt(f.orig_geo_id, f) + ' → dest ' + zoneCt(destGeoId, flowSummary) + '</strong><br>' +
+            '#' + (idx + 1) + ' incoming flow · ' + fmtTrip(f.trips) + ' trips<br>' +
+            fmtKg(f.total_emissions_g) + ' kg CO₂ · ' + fmtDist(f.total_distance_km || 0),
+            { sticky: true, direction: 'top' }
+          )
+          .addTo(flowArcLayer);
+        L.circleMarker(o, {
+          radius: isTop ? 9 : 7,
+          color: '#ffffff',
+          weight: 2.5,
+          fillColor: col,
+          fillOpacity: 1,
+          pane: 'flowPane',
+          interactive: true,
+        })
+          .bindTooltip(
+            '<strong>Origin ' + zoneCt(f.orig_geo_id, f) + '</strong> (# ' + (idx + 1) + ')<br>' +
+            fmtTrip(f.trips) + ' trips · ' + fmtDist(f.total_distance_km || 0) + ' to dest',
+            { sticky: true, direction: 'top' }
+          )
+          .addTo(flowArcLayer);
+        labelQueue.push({ o, ct: zoneCt(f.orig_geo_id, f), col, rank: idx + 1 });
+        addFlowArrow(arc, col, isTop ? 9 : 7);
+        bounds.push(o);
+      });
+      labelQueue.forEach((item) => addFlowZoneLabel(item.o, item.ct, item.col, item.rank));
+      if (destPt) {
+        L.circleMarker(destPt, {
+          radius: 13,
+          color: '#ffffff',
+          weight: 4,
+          fillColor: '#06b6d4',
+          fillOpacity: 1,
+          pane: 'flowPane',
+          interactive: false,
+        }).addTo(flowArcLayer);
+        L.marker(destPt, {
+          icon: destZoneLabelIcon(zoneCt(destGeoId, flowSummary)),
+          pane: 'flowLabelPane',
+          interactive: false,
+          keyboard: false,
+          zIndexOffset: 2000,
+        }).addTo(flowLabelLayer);
+        bounds.push(destPt);
+      }
+      if (bounds.length) {
+        try {
+          map.fitBounds(L.latLngBounds(bounds), { padding: [52, 52], maxZoom: 12 });
+        } catch (_) {}
+      }
+    }
+
+    function updateKpis() {
+      const block = document.getElementById('kpiBlock');
+      if (!destGeoId || !flowSummary) {
+        block.style.display = 'none';
+        return;
+      }
+      block.style.display = 'block';
+      const zm = zoneMetaFromPayload(destGeoId);
+      const rulesExpanded = zoneTripsExpanded(zm, flowSummary.dest_rules_trips);
+      const rulesG = flowSummary.dest_rules_emissions_g ?? (zm && zm.total_emissions_g);
+      const incTrips = flowSummary.total_incoming_trips || 0;
+      const incG = flowSummary.total_incoming_emissions_g || 0;
+      const incKm = flowSummary.total_incoming_distance_km || 0;
+      const origins = flowSummary.origin_zone_count || allFlows.length;
+      const rulesKm = zm && (zm.total_distance_km_weighted != null ? zm.total_distance_km_weighted : zm.total_distance_km);
+      const zoneLblEl = document.getElementById('kpiZoneTotalLabel');
+      if (zoneLblEl) zoneLblEl.textContent = zoneTotalKpiLabel();
+
+      document.getElementById('kpiRulesTrips').textContent = rulesExpanded > 0
+        ? fmtPopTrips(rulesExpanded) + ' trips'
+        : '—';
+      const rulesLegsEl = document.getElementById('kpiRulesTripsLegs');
+      if (rulesLegsEl) rulesLegsEl.textContent = '';
+      document.getElementById('kpiRulesCo2').textContent = rulesG != null
+        ? (fmtKg(rulesG) + ' kg CO₂e')
+        : '—';
+      const rulesKmEl = document.getElementById('kpiRulesKm');
+      if (rulesKmEl) {
+        rulesKmEl.textContent = rulesKm > 0
+          ? (fmtDist(rulesKm) + ' traveled')
+          : '—';
+      }
+      document.getElementById('kpiIncomingTrips').textContent = fmtPopTrips(incTrips) + ' trips';
+      const incNote = document.getElementById('kpiIncomingTripsNote');
+      if (incNote) incNote.textContent = '';
+      const kpiKm = document.getElementById('kpiIncomingKm');
+      if (kpiKm) {
+        kpiKm.textContent = incKm > 0 ? ('Total distance: ' + fmtDist(incKm)) : 'Total distance: —';
+      }
+    }
+
+    function updateTopOrigin(shown, rankOffset) {
+      const box = document.getElementById('topOriginBox');
+      if (!shown.length) { box.style.display = 'none'; return; }
+      const top = shown[0];
+      const rank = (rankOffset || 0) + 1;
+      const incTrips = flowSummary?.total_incoming_trips || 1;
+      const incG = flowSummary?.total_incoming_emissions_g || 1;
+      const incKm = flowSummary?.total_incoming_distance_km || 1;
+      box.style.display = 'block';
+      box.innerHTML =
+        '<div class="title">#' + rank + ' emitting origin: ' + zoneCt(top.orig_geo_id, top) + '</div>' +
+        '<div><strong>' + fmtTrip(top.trips) + '</strong> trips (' + pctOf(top.trips, incTrips) + ' of incoming) · ' +
+        '<strong>' + fmtKg(top.total_emissions_g) + ' kg</strong> CO₂ (' + pctOf(top.total_emissions_g, incG) + ' of incoming)</div>' +
+        '<div><strong>' + fmtDist(top.total_distance_km || 0) + '</strong> km (' +
+        pctOf(top.total_distance_km || 0, incKm) + ' of incoming distance)</div>';
+    }
+
+    function applyFlows() {
+      const sorted = [...allFlows].sort((a, b) => emissionWeight(b) - emissionWeight(a));
+      const total = sorted.length;
+      const rankOffset = flowShowAll ? 0 : (flowPage - 1) * FLOW_PAGE_SIZE;
+      const shown = flowShowAll
+        ? sorted
+        : sorted.slice(rankOffset, rankOffset + FLOW_PAGE_SIZE);
+      incomingOriginGeoIds = new Set(shown.map(f => String(f.orig_geo_id)));
+      renderZones(false);
+      renderFlowsOnMap(shown);
+
+      const incTrips = flowSummary?.total_incoming_trips || 0;
+      const incG = flowSummary?.total_incoming_emissions_g || 0;
+      const incKm = flowSummary?.total_incoming_distance_km || 0;
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      shown.forEach((f, idx) => {
+        const tr = document.createElement('tr');
+        const globalRank = rankOffset + idx + 1;
+        if (globalRank === 1) tr.className = 'rank1';
+        const col = FLOW_ARC_COLORS[idx % FLOW_ARC_COLORS.length];
+        const rankBadge = '<span title="Flow rank on map" ' +
+          'style="display:inline-block;min-width:1.6rem;text-align:center;padding:1px 5px;border-radius:5px;' +
+          'background:rgba(12,17,25,0.9);border:2px solid ' + col + ';color:#e8eef7;' +
+          'font-size:0.72rem;font-weight:700">#' + globalRank + '</span>';
+        tr.innerHTML =
+          '<td>' + rankBadge + '</td>' +
+          '<td><strong>' + zoneCt(f.orig_geo_id, f) + '</strong></td>' +
+          '<td>' + fmtTrip(f.trips) + '</td>' +
+          '<td class="pct">' + pctOf(f.trips, incTrips) + '</td>' +
+          '<td>' + fmtKg(f.total_emissions_g) + '</td>' +
+          '<td class="pct">' + pctOf(f.total_emissions_g, incG) + '</td>' +
+          '<td>' + fmtDist(f.total_distance_km || 0) + '</td>' +
+          '<td class="pct">' + pctOf(f.total_distance_km || 0, incKm) + '</td>';
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('flowTable').style.display = shown.length ? '' : 'none';
+      document.getElementById('emptyFlows').style.display = shown.length ? 'none' : 'block';
+      document.getElementById('emptyFlows').textContent = 'No incoming inter-zonal flows for this zone.';
+      const originTotal = flowSummary?.origin_zone_count || total;
+      document.getElementById('tableMeta').textContent = shown.length
+        ? ('Origins ranked ' + flowPageLabel(originTotal) + ' (of ' + originTotal +
+           ' total) · km = distance for that OD pair.')
+        : '';
+      document.getElementById('kpiShown').textContent = shown.length
+        ? ('Map arcs: origins ' + flowPageLabel(originTotal) + ' by CO₂ emissions')
+        : '—';
+      updateTopOrigin(shown, rankOffset);
+      updateKpis();
+    }
+
+    function applyIncomingPayload(data) {
+      if (!flowsMatchDest(data)) return;
+      flowSummary = data;
+      allFlows = (data.flows || []).map(f => ({
+        orig_geo_id: f.orig_geo_id,
+        dest_geo_id: data.dest_geo_id || destGeoId,
+        trips: f.trips,
+        total_emissions_g: f.total_emissions_g,
+        total_distance_km: f.total_distance_km,
+        orig_lat: f.orig_lat, orig_lon: f.orig_lon,
+        dest_lat: f.dest_lat, dest_lon: f.dest_lon,
+      }));
+      allFlows.sort((a, b) => emissionWeight(b) - emissionWeight(a));
+      rebuildFlowPageOptions(data.origin_zone_count || allFlows.length);
+      document.getElementById('hint').innerHTML =
+        'Destination <strong class="sel">' + zoneCt(destGeoId, flowSummary) + '</strong> — arcs and table show origins ranked <strong>' +
+        flowPageLabel(data.origin_zone_count || allFlows.length) + '</strong> by CO₂.';
+      applyFlows();
+    }
+
+    function readAllFlowsCache() {
+      try {
+        const raw = sessionStorage.getItem(flowsAllCacheKey());
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (!o || !o.ts || Date.now() - o.ts > CACHE_TTL_MS) return null;
+        return o.zones || null;
+      } catch (_) {
+        return null;
+      }
+    }
+    function writeAllFlowsCache(zones) {
+      try {
+        sessionStorage.setItem(flowsAllCacheKey(), JSON.stringify({ ts: Date.now(), zones }));
+      } catch (_) { /* quota exceeded: keep in memory only */ }
+    }
+
+    // Fetch top-N incoming flows for every zone exactly once; later clicks are served
+    // from memory without hitting the database.
+    function loadAllFlows() {
+      if (allFlowsCache) return Promise.resolve(allFlowsCache);
+      if (allFlowsPromise) return allFlowsPromise;
+      const cached = readAllFlowsCache();
+      if (cached) { allFlowsCache = cached; return Promise.resolve(cached); }
+      const q = new URLSearchParams({
+        zone_by: zoneBy,
+        limit: 'all',
+        _: String(Date.now()),
+      });
+      if (islandOnly) q.set('island_only', '1');
+      allFlowsPromise = fetchJson('/api/od/zone_incoming_flows_all?' + q.toString(), 180000)
+        .then(data => {
+          if (data && data.supported && data.zones) {
+            allFlowsCache = data.zones;
+            writeAllFlowsCache(data.zones);
+          }
+          return allFlowsCache;
+        })
+        .catch(e => { console.warn('bulk flows prefetch failed:', e); return null; })
+        .finally(() => { allFlowsPromise = null; });
+      return allFlowsPromise;
+    }
+
+    function emptyIncomingPayload(id) {
+      return {
+        dest_geo_id: String(id),
+        total_incoming_trips: 0,
+        total_incoming_emissions_g: 0,
+        total_incoming_distance_km: 0,
+        origin_zone_count: 0,
+        flows: [],
+      };
+    }
+
+    async function loadIncomingFlows() {
+      if (!destGeoId) {
+        flowSummary = null;
+        allFlows = [];
+        incomingOriginGeoIds = new Set();
+        clearFlowLayers();
+        renderZones(false);
+        document.getElementById('kpiBlock').style.display = 'none';
+        document.getElementById('topOriginBox').style.display = 'none';
+        document.getElementById('flowTable').style.display = 'none';
+        document.getElementById('emptyFlows').style.display = 'block';
+        document.getElementById('emptyFlows').textContent = 'Click any zone on the map to see where its incoming car trips come from.';
+        document.getElementById('hint').innerHTML =
+          'PM23 ' + zoneMapModeLabel().toLowerCase() + ' CO₂ by zone (Montreal island). <strong>Click a zone</strong> to explore incoming flows.';
+        document.getElementById('tableMeta').textContent = '';
+        return;
+      }
+      // Instant path: serve from the prefetched bulk cache (no DB round trip).
+      if (allFlowsCache) {
+        ++flowsLoadSeq;
+        if (flowsFetchAbort) { flowsFetchAbort.abort(); flowsFetchAbort = null; }
+        const entry = allFlowsCache[String(destGeoId)] || emptyIncomingPayload(destGeoId);
+        applyIncomingPayload(entry);
+        return;
+      }
+      const seq = ++flowsLoadSeq;
+      if (flowsFetchAbort) flowsFetchAbort.abort();
+      flowsFetchAbort = new AbortController();
+      const q = new URLSearchParams({
+        dest_geo_id: destGeoId,
+        limit: 'all',
+        zone_by: zoneBy,
+        _: String(Date.now()),
+      });
+      if (islandOnly) q.set('island_only', '1');
+      try {
+        const data = await fetchJson(
+          '/api/od/zone_incoming_flow?' + q.toString(),
+          120000,
+          flowsFetchAbort.signal
+        );
+        if (seq !== flowsLoadSeq) return;
+        applyIncomingPayload(data);
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        if (seq !== flowsLoadSeq) return;
+        throw e;
+      }
+    }
+
+    async function handleExternalDestSelection(dest, zb) {
+      const zid = String(dest || '').trim();
+      const want = zb === 'dest' ? 'dest' : 'rules';
+      if (want !== zoneBy) await switchZoneBy(want);
+      if (zid && zid !== String(destGeoId)) await selectZone(zid);
+    }
+
+    function readDestFromParentUrl() {
+      if (!IS_EMBED || window.parent === window) return '';
+      try {
+        return (new URLSearchParams(window.parent.location.search).get('dest_geo_id') || '').trim();
+      } catch (_) {
+        return '';
+      }
+    }
+
+    window.addEventListener('message', (e) => {
+      if (!e.data || e.data.type !== 'dash-select-dest') return;
+      handleExternalDestSelection(e.data.dest_geo_id, e.data.zone_by).catch((err) => {
+        console.warn('dash-select-dest:', err);
+      });
+    });
+
+    async function selectZone(geoId) {
+      const zid = String(geoId);
+      if (zid === String(destGeoId)) return;
+      destGeoId = zid;
+      syncUrl();
+      updateZoneByUi();
+      document.getElementById('err').style.display = 'none';
+      document.getElementById('err').textContent = '';
+      clearFlowLayers();
+      incomingOriginGeoIds = new Set();
+      allFlows = [];
+      flowSummary = null;
+      document.getElementById('flowTable').style.display = 'none';
+      document.getElementById('kpiBlock').style.display = 'none';
+      document.getElementById('topOriginBox').style.display = 'none';
+      document.getElementById('emptyFlows').style.display = 'block';
+      document.getElementById('emptyFlows').textContent = 'Loading flows…';
+      renderZones(false);
+      document.getElementById('hint').innerHTML =
+        'Loading incoming flows for <strong class="sel">' + zoneCt(destGeoId, zoneMetaFromPayload(destGeoId)) + '</strong>…';
+      try {
+        await loadIncomingFlows();
+      } catch (e) {
+        document.getElementById('err').style.display = 'block';
+        document.getElementById('err').textContent = String(e && e.message ? e.message : e);
+        throw e;
+      }
+    }
+
+    function readZoneCache(requirePolygons) {
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY());
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (!o || !o.ts || Date.now() - o.ts > CACHE_TTL_MS) return null;
+        const p = o.payload;
+        if (!p || !p.zones?.length) return null;
+        if (requirePolygons && !p.geojson?.features?.length) return null;
+        return p;
+      } catch (_) {
+        try { sessionStorage.removeItem(CACHE_KEY()); } catch (_2) {}
+        return null;
+      }
+    }
+    function writeZoneCache(payload) {
+      try {
+        sessionStorage.setItem(CACHE_KEY(), JSON.stringify({ ts: Date.now(), payload }));
+      } catch (_) {
+        try {
+          sessionStorage.setItem(CACHE_KEY(), JSON.stringify({
+            ts: Date.now(),
+            payload: { zones: payload.zones || [], geojson: null },
+          }));
+        } catch (_2) { /* quota */ }
+      }
+    }
+
+    async function loadZoneMapCurrent(includeGeojson) {
+      const cached = includeGeojson ? readZoneCache(true) : readZoneCache(false);
+      if (cached) {
+        zonePayload = cached;
+        return;
+      }
+      const zq = new URLSearchParams({
+        zone_by: zoneBy,
+        min_kg: '0',
+        include_geojson: includeGeojson ? '1' : '0',
+      });
+      if (islandOnly) zq.set('island_only', '1');
+      let raw = await fetchJson('/api/od/zone_map?' + zq.toString(), includeGeojson ? 300000 : 120000);
+      if (raw && raw.error) {
+        throw new Error(raw.message || raw.error || 'od zone_map failed');
+      }
+      zonePayload = parseZoneMapResponse(raw);
+      if (!zonePayload.zones?.length && !zonePayload.geojson?.features?.length) {
+        throw new Error('No OD zone data. Run preprocess_dashboard_od10_zone_emissions.py.');
+      }
+      writeZoneCache(zonePayload);
+    }
+
+    function applyZonePayload() {
+      updateScale();
+      updateZoneByUi();
+      renderZones(!mapInitialFitDone);
+      if (map) {
+        map.invalidateSize();
+        setTimeout(() => map.invalidateSize(), 200);
+      }
+    }
+
+    function setHintLoading(msg) {
+      const hintEl = document.getElementById('hint');
+      if (hintEl) hintEl.innerHTML = msg;
+      const live = document.getElementById('liveHint');
+      if (live) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = msg;
+        live.textContent = (tmp.textContent || '').trim() || 'Rules map · incoming flows';
+      }
+      if (IS_EMBED && window.DashEmbed) DashEmbed.syncHint();
+    }
+
+    function fmtPopTrips(n) {
+      if (!Number.isFinite(Number(n))) return '—';
+      return window.DashZoneUi ? DashZoneUi.formatTrips(n) : String(Math.round(Number(n) || 0));
+    }
+    let bootCacheFlows = null;
+    function formatSidebarNum(n) {
+      n = Number(n) || 0;
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+      return n.toLocaleString();
+    }
+    function applyKpiBlock(prefix, stats) {
+      if (!stats) return;
+      const trips = Number(stats.trips_weighted ?? stats.trips) || 0;
+      const emis = Number(stats.total_emissions_g_weighted ?? stats.total_emissions_g) || 0;
+      const km = Number(stats.total_distance_km_weighted ?? stats.total_distance_km) || 0;
+      const tripsEl = document.getElementById('kpi-' + prefix + '-trips');
+      if (tripsEl) tripsEl.textContent = fmtPopTrips(trips);
+      const sub = document.getElementById('kpi-' + prefix + '-trips-sub');
+      if (sub) {
+        sub.textContent = stats.kpi_scope === 'island_eligible'
+          ? 'CMM residents · island-touch'
+          : '';
+      }
+      const kg = totalEmissionsKg(emis);
+      const co2El = document.getElementById('kpi-' + prefix + '-co2');
+      if (co2El) co2El.textContent = kg != null ? formatSidebarNum(kg) : '—';
+      const kmEl = document.getElementById('kpi-' + prefix + '-km');
+      if (kmEl) kmEl.textContent = formatSidebarNum(km);
+      const avgG = trips > 0 ? emis / trips : Number(stats.avg_emissions_g_per_trip) || 0;
+      const avgKg = avgEmissionsKgPerTrip(avgG);
+      const avgEl = document.getElementById('kpi-' + prefix + '-avg');
+      if (avgEl) avgEl.textContent = avgKg != null ? formatSidebarNum(avgKg) : '—';
+    }
+
+    function applyDualSidebarKpis(boot) {
+      if (!boot) return;
+      applyKpiBlock('rules', boot.stats_rules || boot.stats);
+      applyKpiBlock('dest', boot.stats_dest);
+    }
+
+    async function ensureZoneCodeMap() {
+      if (window.DashZoneUi && DashZoneUi.setZoneCodeMap) {
+        try {
+          const data = await fetchJson('/api/zone_codes', 30000);
+          if (data && data.zone_codes) DashZoneUi.setZoneCodeMap(data.zone_codes);
+          if (data && data.zone_names) DashZoneUi.setZoneNameMap(data.zone_names);
+        } catch (e) {
+          console.warn('zone_codes:', e);
+        }
+      }
+      const zoneCodeQ = (qs.get('dest_zone_code') || qs.get('zone_code') || '').trim();
+      if (!destGeoId && IS_EMBED) {
+        const parentDest = readDestFromParentUrl();
+        if (parentDest) destGeoId = parentDest;
+      }
+      if (!destGeoId && zoneCodeQ && window.DashZoneUi && DashZoneUi.resolveGeoIdQuery) {
+        const gid = DashZoneUi.resolveGeoIdQuery(zoneCodeQ);
+        if (gid) destGeoId = gid;
+      }
+    }
+
+    async function loadSidebarStats() {
+      try {
+        const boot = await fetchJson('/api/od/bootstrap', 60000);
+        bootCacheFlows = boot;
+        if (boot.zone_codes && window.DashZoneUi) DashZoneUi.setZoneCodeMap(boot.zone_codes);
+        if (boot.zone_names && window.DashZoneUi) DashZoneUi.setZoneNameMap(boot.zone_names);
+        applyDualSidebarKpis(boot);
+      } catch (e) {
+        console.warn('sidebar stats:', e);
+      }
+    }
+
+    function setHintReady() {
+      if (destGeoId) return;
+      setHintLoading(
+        'PM23 ' + zoneMapModeLabel().toLowerCase() + ' CO₂ by zone (Montreal island). <strong>Click a zone</strong> to explore incoming flows.'
+      );
+    }
+
+    async function main() {
+      await ensureZoneCodeMap();
+      updateZoneByUi();
+      syncFlowPageUi();
+      if (window.DashNav) {
+        DashNav.initAttributionTabs({
+          onSwitch: function (_key, attr) {
+            switchZoneBy(attr === 'dest' ? 'dest' : 'rules');
+          },
+        });
+      }
+      document.getElementById('flowDisplayPage')?.addEventListener('change', (ev) => {
+        const v = ev.target && ev.target.value;
+        if (v === 'all') {
+          flowShowAll = true;
+          flowPage = 1;
+        } else {
+          flowShowAll = false;
+          flowPage = parseInt(v, 10) || 1;
+        }
+        syncUrl();
+        if (allFlows.length) applyFlows();
+      });
+      setHintLoading('Loading zone map…');
+      if (!IS_EMBED && window.PageLoading) {
+        PageLoading.show();
+        PageLoading.init();
+      } else if (IS_EMBED && window.PageLoading) {
+        PageLoading.hideNow();
+      }
+      if (!IS_EMBED) loadSidebarStats().catch(() => {});
+      syncUrl();
+      initMap();
+      map.invalidateSize();
+
+      try {
+        await Promise.all([loadMontrealBoundary(), loadCmmZoneBoundaries()]);
+        await loadZoneMapCurrent(true);
+        applyZonePayload();
+        if (!IS_EMBED && window.PageLoading) PageLoading.hideNow();
+        if (!destGeoId) setHintReady();
+        if (IS_EMBED && window.DashEmbed) {
+          const n = (zonePayload && zonePayload.zones && zonePayload.zones.length) || 0;
+          DashEmbed.notifyDataReady({ zones: n });
+          DashEmbed.syncHint();
+          DashEmbed.notifyReady();
+          DashEmbed.bindShow(() => {
+            const dest = readDestFromParentUrl();
+            if (dest) {
+              handleExternalDestSelection(dest, window.DashNav ? DashNav.readAttribution('rules') : 'rules')
+                .catch((err) => console.warn('parent dest:', err));
+            }
+          });
+        }
+
+        polygonUpgradePromise = Promise.resolve();
+
+        const bulkP = loadAllFlows();
+
+        if (destGeoId) {
+          setHintLoading('Loading incoming flows for <strong class="sel">' + zoneCt(destGeoId, zoneMetaFromPayload(destGeoId)) + '</strong>…');
+          await loadIncomingFlows();
+        }
+        bulkP.then(() => {
+          if (destGeoId && allFlowsCache) loadIncomingFlows().catch(() => {});
+        });
+      } catch (err) {
+        showLoadError(err);
+        setHintLoading('Failed to load. See error below.');
+      } finally {
+        if (!IS_EMBED && window.PageLoading) PageLoading.hideNow();
+        if (map) {
+          map.invalidateSize();
+          setTimeout(() => map.invalidateSize(), 300);
+        }
+      }
+    }
+
+    if (IS_EMBED && window.DashEmbed) {
+      DashEmbed.bindShow(function () {
+        if (map) {
+          map.invalidateSize();
+          setTimeout(function () { map.invalidateSize(); }, 120);
+        }
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { main().catch(showLoadError); });
+    } else {
+      main().catch(showLoadError);
+    }
+    window.addEventListener('load', () => { if (map) map.invalidateSize(); });
+
+    let flowsResizeDebounce;
+    window.addEventListener('resize', () => {
+      clearTimeout(flowsResizeDebounce);
+      flowsResizeDebounce = setTimeout(() => {
+        if (map) map.invalidateSize();
+        if (allFlows && allFlows.length && destGeoId) applyFlows();
+      }, 180);
+    });
+  </script>
+</body>
+</html>
