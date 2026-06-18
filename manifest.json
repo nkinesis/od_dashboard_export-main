@@ -2,7 +2,7 @@
   "bundle_type": "od_dashboard",
   "run_tag": "od10",
   "schema": "public",
-  "dbname": "Synthetic2023",
+  "dbname": "od_dashboard",
   "tables": [
     "public.popgen_zones_geom",
     "public.zone_incoming_flows_od10",

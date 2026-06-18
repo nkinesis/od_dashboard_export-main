@@ -18,6 +18,10 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Database dumps (host separately — see README.html)
+data/db/*.dump
+*.dump
+
 # Logs / temp
 *.log
 *.tmp

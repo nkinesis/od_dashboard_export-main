@@ -65,14 +65,17 @@ from meeting_emissions_attribution import (  # noqa: E402
 )
 from popgen_constants import BUILDINGS_TABLE  # noqa: E402
 
-DB_PARAMS = {
-    "dbname": "Synthetic2023",
-    "user": "postgres",
-    "password": "admin",
-    "host": "localhost",
-    "port": "5433",
-}
-SCHEMA = "popgen"
+DB_PARAMS: dict[str, str] = {"dbname": os.environ.get("PGDATABASE", "od_dashboard")}
+for _pg_key, _pg_env in (
+    ("host", "PGHOST"),
+    ("port", "PGPORT"),
+    ("user", "PGUSER"),
+    ("password", "PGPASSWORD"),
+):
+    _pg_val = os.environ.get(_pg_env, "").strip()
+    if _pg_val:
+        DB_PARAMS[_pg_key] = _pg_val
+SCHEMA = "public"
 _ZONES_CSV = Path(__file__).resolve().parent.parent / "Data" / "popgen_inputs" / "zones.csv"
 _GEO_SP23_CSV = Path(__file__).resolve().parent.parent / "Data" / "popgen_inputs" / "geo_zone_sp23.csv"
 _ZONE_CODE_BY_GEO: dict[str, str] | None = None

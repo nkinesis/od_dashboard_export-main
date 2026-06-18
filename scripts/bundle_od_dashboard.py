@@ -1,7 +1,7 @@
 """Pack / unpack a **portable OD dashboard** folder for another machine.
 
 Creates a self-contained directory with ``dashboard/``, ``scripts/``, ``data/`` (Postgres
-dump + boundary GeoJSON + zone label CSVs). No full PopGen repo required on the target.
+dump + island boundary GeoJSON).
 
 **pack** (source machine)::
 
@@ -15,7 +15,7 @@ dump + boundary GeoJSON + zone label CSVs). No full PopGen repo required on the 
 **run** (target machine, from bundle root)::
 
   pip install -r requirements.txt
-  python scripts/run_dashboard.py --db-password YOUR_PASSWORD
+  python scripts/run_dashboard.py --db-name od_dashboard
 
 Requires ``pg_dump`` / ``pg_restore`` on PATH (or set ``PG_BIN``).
 """
@@ -144,13 +144,30 @@ def _apply_conn_config(args) -> None:
 
 
 def _pg_conn_args(args) -> dict[str, str]:
-    return {
-        "host": args.host,
-        "port": str(args.port),
-        "user": args.user,
-        "password": args.password,
-        "dbname": args.dbname,
-    }
+    out: dict[str, str] = {"dbname": args.dbname}
+    if getattr(args, "host", None):
+        out["host"] = args.host
+    if getattr(args, "port", None) is not None:
+        out["port"] = str(args.port)
+    if getattr(args, "user", None):
+        out["user"] = args.user
+    if getattr(args, "password", None):
+        out["password"] = args.password
+    return out
+
+
+def _pg_tool_argv(conn: dict[str, str]) -> list[str]:
+    """psql / pg_restore connection flags (omit unset values)."""
+    argv: list[str] = []
+    if conn.get("host"):
+        argv.extend(["-h", conn["host"]])
+    if conn.get("port"):
+        argv.extend(["-p", conn["port"]])
+    if conn.get("user"):
+        argv.extend(["-U", conn["user"]])
+    if conn.get("dbname"):
+        argv.extend(["-d", conn["dbname"]])
+    return argv
 
 
 def _find_pg_tool(name: str) -> str:
@@ -287,16 +304,16 @@ Portable folder for the PM23 survey dashboard (`run_dashboard.py`).
 
 - `dashboard/` — static HTML / JS / CSS (SPA + zone / buildings / flows views)
 - `scripts/` — Flask API server and dependencies
+- `data/` — island boundary GeoJSON
 - `data/db/` — PostgreSQL dump (`{DUMP_NAME}`)
-- `data/` — island boundary GeoJSON + `popgen_inputs/` zone label CSVs
 
 ## Target machine setup
 
 1. Install **Python 3.10+**, **PostgreSQL 14+** with **PostGIS**.
-2. Create database `{dbname}` (or your own name) and schema `popgen`.
+2. Create database `{dbname}` (default: **od_dashboard**) with PostGIS enabled.
 3. Restore the dump::
 
-     python scripts/bundle_od_dashboard.py unpack --bundle-dir .
+     python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname {dbname}
 
 4. Install Python deps::
 
@@ -304,15 +321,15 @@ Portable folder for the PM23 survey dashboard (`run_dashboard.py`).
 
 5. Start the server (from this folder)::
 
-     python scripts/run_dashboard.py --db-host localhost --db-port 5433 \\
-       --db-name {dbname} --db-user postgres --db-password YOUR_PASSWORD
+     python scripts/run_dashboard.py --db-name {dbname}
+
+   Use your normal PostgreSQL connection settings (environment variables or libpq); only the database name is prescribed.
 
 6. Open **http://127.0.0.1:5051/**
 
 ## Notes
 
 - The dump contains **precomputed aggregates only** (no `person_key` / `d_id`).
-- Zone labels come from `data/popgen_inputs/zones.csv` and `geo_zone_sp23.csv`.
 - Island map filter uses `data/mtl_boundary_file.geojson`.
 """,
         encoding="utf-8",
@@ -404,15 +421,11 @@ def _ensure_postgis(args) -> None:
         env["PGPASSWORD"] = conn["password"]
     for sql in (
         "CREATE EXTENSION IF NOT EXISTS postgis",
-        'CREATE SCHEMA IF NOT EXISTS "popgen"',
     ):
         _run(
             [
                 psql,
-                "-h", conn["host"],
-                "-p", conn["port"],
-                "-U", conn["user"],
-                "-d", conn["dbname"],
+                *_pg_tool_argv(conn),
                 "-v", "ON_ERROR_STOP=1",
                 "-c", sql,
             ],
@@ -444,10 +457,7 @@ def cmd_unpack(args) -> int:
     print("Restoring database dump ...", flush=True)
     restore_cmd = [
         pg_restore,
-        "-h", conn["host"],
-        "-p", conn["port"],
-        "-U", conn["user"],
-        "-d", conn["dbname"],
+        *_pg_tool_argv(conn),
         "--no-owner",
         "--no-acl",
         "--clean",
@@ -463,21 +473,37 @@ def cmd_unpack(args) -> int:
     print(f"  cd {bundle_dir.as_posix()}", flush=True)
     print("  pip install -r requirements.txt", flush=True)
     print(
-        f"  python scripts/run_dashboard.py --bundle-root . "
-        f"--db-host {conn['host']} --db-port {conn['port']} "
-        f"--db-name {conn['dbname']} --db-user {conn['user']}",
+        f"  python scripts/run_dashboard.py --bundle-root . --db-name {conn['dbname']}",
         flush=True,
     )
     print("  -> http://127.0.0.1:5051/", flush=True)
     return 0
 
 
+def _env_int(name: str) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    return int(raw) if raw else None
+
+
 def _add_conn_flags(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument("--host", default=os.environ.get("PGHOST", "localhost"))
-    ap.add_argument("--port", type=int, default=int(os.environ.get("PGPORT", "5433")))
-    ap.add_argument("--user", default=os.environ.get("PGUSER", "postgres"))
-    ap.add_argument("--password", default=os.environ.get("PGPASSWORD", "admin"))
-    ap.add_argument("--dbname", default=os.environ.get("PGDATABASE", "Synthetic2023"))
+    ap.add_argument("--host", default=os.environ.get("PGHOST", ""), help="PostgreSQL host (or PGHOST)")
+    ap.add_argument(
+        "--port",
+        type=int,
+        default=_env_int("PGPORT"),
+        help="PostgreSQL port (or PGPORT)",
+    )
+    ap.add_argument("--user", default=os.environ.get("PGUSER", ""), help="PostgreSQL user (or PGUSER)")
+    ap.add_argument(
+        "--password",
+        default=os.environ.get("PGPASSWORD", ""),
+        help="PostgreSQL password (or PGPASSWORD)",
+    )
+    ap.add_argument(
+        "--dbname",
+        default=os.environ.get("PGDATABASE", "od_dashboard"),
+        help="PostgreSQL database name (default: od_dashboard)",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -11,9 +11,7 @@ Portable export for another machine::
 Run::
 
   python scripts/run_dashboard.py
-  python scripts/run_dashboard.py --port 5051 \\
-      --db-host localhost --db-port 5433 --db-name Synthetic2023 \\
-      --db-user postgres --db-password secret --db-schema popgen
+  python scripts/run_dashboard.py --db-name od_dashboard
 """
 
 from __future__ import annotations
@@ -88,15 +86,15 @@ def _apply_db_cli(
 ) -> None:
     """Override module DB settings from CLI (defaults unchanged when arg is None)."""
     global SCHEMA
-    if db_host is not None:
+    if db_host:
         DB_PARAMS["host"] = db_host
-    if db_port is not None:
+    if db_port is not None and str(db_port).strip():
         DB_PARAMS["port"] = str(db_port)
-    if db_name is not None:
+    if db_name:
         DB_PARAMS["dbname"] = db_name
-    if db_user is not None:
+    if db_user:
         DB_PARAMS["user"] = db_user
-    if db_password is not None:
+    if db_password:
         DB_PARAMS["password"] = db_password
     if db_schema is not None:
         SCHEMA = db_schema.strip()
@@ -979,8 +977,8 @@ def api_od10_zone_map():
                 "message": (
                     f"No OD10 zone table found in schema '{SCHEMA}' "
                     f"(expected zone_emissions_od10). "
-                    "Restore the bundle dump into popgen, or pass --db-schema public "
-                    "if your tables live in public."
+                    "Restore the bundle dump into od_dashboard (schema public), "
+                    "or pass --db-schema if tables live elsewhere."
                 ),
             }), 503
         payload = _od10_zone_map_rows(
@@ -1041,7 +1039,8 @@ def api_od10_zone_maps():
                 "message": (
                     f"No OD10 zone tables in schema '{SCHEMA}' "
                     f"(expected zone_emissions_od10). "
-                    "Restore the bundle dump into popgen, or pass --db-schema public."
+                    "Restore the bundle dump into od_dashboard (schema public), "
+                    "or pass --db-schema if tables live elsewhere."
                 ),
             }), 503
         dest_payload = _od10_zone_map_rows(
@@ -1088,7 +1087,8 @@ def api_od10_bootstrap():
                 "message": (
                     f"No OD10 zone table found in schema '{SCHEMA}' "
                     f"(expected zone_emissions_od10). "
-                    "Restore the bundle dump into popgen, or pass --db-schema public."
+                    "Restore the bundle dump into od_dashboard (schema public), "
+                    "or pass --db-schema if tables live elsewhere."
                 ),
             }), 503
         stats = _od10_stats_from_table(cur, zone_tab, zone_by="rules")
@@ -2300,7 +2300,7 @@ if __name__ == "__main__":
     )
     ap.add_argument("--db-host", default=os.environ.get("PGHOST"), help="PostgreSQL host")
     ap.add_argument("--db-port", default=os.environ.get("PGPORT"), help="PostgreSQL port")
-    ap.add_argument("--db-name", default=os.environ.get("PGDATABASE"), help="PostgreSQL database name")
+    ap.add_argument("--db-name", default=os.environ.get("PGDATABASE", "od_dashboard"), help="PostgreSQL database name")
     ap.add_argument("--db-user", default=os.environ.get("PGUSER"), help="PostgreSQL user")
     ap.add_argument("--db-password", default=os.environ.get("PGPASSWORD"), help="PostgreSQL password")
     ap.add_argument(
