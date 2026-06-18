@@ -1,8 +1,48 @@
 {
   "dump_file": "data/db/od_dashboard_tables.dump",
-  "dump_distribution": "OneDrive (not included in Git repository)",
+  "dump_distribution": "OneDrive (not included in Git repository); also PopGen2023/Data/db/od_dashboard_tables.zip",
   "dump_download_url": "https://liveconcordia-my.sharepoint.com/:u:/g/personal/atiya_atiya_concordia_ca/IQDAgc05pD40SK9YSnDwFZURAcydIl6xbQHGRnafPX5VfIE?e=j6PxkO",
-  "dump_size_mb_approx": 176,
+  "dump_size_mb_approx": 172,
   "dump_filename": "od_dashboard_tables.dump",
-  "database_name": "od_dashboard"
+  "database_name": "od_dashboard",
+  "schema": "public",
+  "restore_steps": {
+    "1_create_database": "pgAdmin → Create Database → name: od_dashboard",
+    "2_prepare_schema_sql": [
+      "DROP SCHEMA IF EXISTS public CASCADE;",
+      "CREATE SCHEMA public;",
+      "GRANT ALL ON SCHEMA public TO postgres;",
+      "GRANT ALL ON SCHEMA public TO public;",
+      "CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;"
+    ],
+    "3_pgadmin_restore": {
+      "format": "Custom or tar",
+      "filename": "data/db/od_dashboard_tables.dump",
+      "data_options": {
+        "sections": { "pre_data": true, "post_data": true, "data": true },
+        "type_of_objects": { "only_data": false, "only_schema": false },
+        "do_not_save": {
+          "owner": true,
+          "privileges": true,
+          "tablespaces": false,
+          "comments": false,
+          "publications": false,
+          "subscriptions": false,
+          "security_labels": false,
+          "table_access_methods": false
+        }
+      }
+    },
+    "4_verify": "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+  },
+  "tables": [
+    "popgen_zones_geom",
+    "zone_emissions_od10",
+    "zone_incoming_flows_od10",
+    "zone_flow_anchors_od10",
+    "zone_emissions_categories_od10",
+    "building_emissions_od10",
+    "buildings_footprint",
+    "trips_route_emissions"
+  ]
 }
