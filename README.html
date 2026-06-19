@@ -391,61 +391,23 @@ copy %USERPROFILE%\Downloads\od_dashboard_tables.dump data\db\od_dashboard_table
     </table>
 
     <h3>Step A — Create database</h3>
-    <p>In <strong>pgAdmin</strong>, right-click <strong>Databases</strong> → <strong>Create</strong> → <strong>Database…</strong></p>
-    <ul>
-      <li><strong>Database:</strong> <code>od_dashboard</code></li>
-      <li><strong>Owner:</strong> <code>postgres</code> (or your admin user)</li>
-    </ul>
+    <p>In pgAdmin (or <code>psql</code>), create a database named <strong><code>od_dashboard</code></strong> and enable the <strong>postgis</strong> extension (the unpack script can enable PostGIS if you skip this).</p>
 
-    <h3>Step B — Prepare <code>public</code> schema and PostGIS</h3>
-    <p>Open <strong>Query Tool</strong> on <code>od_dashboard</code> and run:</p>
-    <pre><code>DROP SCHEMA IF EXISTS public CASCADE;
-
-CREATE SCHEMA public;
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT ALL ON SCHEMA public TO public;
-
-CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;</code></pre>
-
-    <h3>Step C — Restore with pgAdmin (GUI)</h3>
-    <ol>
-      <li>Right-click <code>od_dashboard</code> → <strong>Restore…</strong></li>
-      <li><strong>General</strong> tab: <strong>Format</strong> = <em>Custom or tar</em>; <strong>Filename</strong> = <code>data\db\od_dashboard_tables.dump</code></li>
-      <li><strong>Data Options</strong> tab — set toggles:</li>
-    </ol>
-    <table>
-      <thead><tr><th>Section</th><th>Option</th><th>Setting</th></tr></thead>
-      <tbody>
-        <tr><td>Sections</td><td>Pre-data, Post-data, Data</td><td><strong>On</strong></td></tr>
-        <tr><td>Type of objects</td><td>Only data, Only schema</td><td>Off</td></tr>
-        <tr><td>Do not save</td><td><strong>Owner</strong>, <strong>Privileges</strong></td><td><strong>On</strong></td></tr>
-        <tr><td>Do not save</td><td>Tablespaces, Comments, Publications, Subscriptions, Security labels, Table access methods</td><td>Off</td></tr>
-      </tbody>
-    </table>
-    <p>Click <strong>Restore</strong>. Tables land in schema <code>public</code>.</p>
-
-    <h3>Step D — Restore (Python script, alternative)</h3>
+    <h3>Step B — Restore (recommended script)</h3>
     <pre><code>pip install -r requirements.txt
 
 python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname od_dashboard</code></pre>
     <p>Connection host, port, user, and password are taken from your normal PostgreSQL setup (<code>PGHOST</code>, <code>PGPORT</code>, <code>PGUSER</code>, <code>PGPASSWORD</code>, or libpq defaults) — only the database name is fixed here.</p>
 
-    <h3>Step E — Restore (manual pg_restore)</h3>
+    <h3>Step C — Restore (manual pg_restore)</h3>
     <pre><code>psql -d od_dashboard -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
 pg_restore -d od_dashboard --no-owner --no-acl --clean --if-exists ^
   data\db\od_dashboard_tables.dump</code></pre>
 
     <div class="card ok">
-      <p class="check">✓ Verify (8 tables in <code>public</code>):</p>
-      <pre><code>SELECT table_schema, table_name FROM information_schema.tables
-WHERE table_schema = 'public'
-  AND table_name IN (
-    'popgen_zones_geom','zone_emissions_od10','zone_incoming_flows_od10',
-    'zone_flow_anchors_od10','zone_emissions_categories_od10',
-    'building_emissions_od10','buildings_footprint','trips_route_emissions'
-  )
-ORDER BY table_name;</code></pre>
+      <p class="check">✓ Verify:</p>
+      <pre><code>psql -d od_dashboard -c "\dt public.*"</code></pre>
     </div>
 
     <h2 id="python">Python environment</h2>

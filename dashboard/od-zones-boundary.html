@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>PopGen · Actual OD survey (PM23) · Zone boundaries</title>
+      <base href="/montreal-traffic-emissions-dashboard/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
@@ -197,7 +198,7 @@
     }
     function apiBase() {
       try {
-        var u = (new URLSearchParams(window.location.search).get('api') || '').trim();
+        var u = (new URLSearchParams(window.location.search).get('od-dashboard-api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) {}
       if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
@@ -246,9 +247,9 @@
 
     function pageUrl(path, extraParams) {
       var q = new URLSearchParams(window.location.search);
-      var api = q.get('api');
+      var api = q.get('od-dashboard-api');
       var p = new URLSearchParams();
-      if (api) p.set('api', api);
+      if (api) p.set('od-dashboard-api', api);
       if (extraParams) {
         Object.keys(extraParams).forEach(function (k) {
           p.set(k, extraParams[k]);
@@ -324,7 +325,7 @@
     }
 
     function loadIslandOutline() {
-      return fetchJson('/api/montreal_boundary.geojson').then(function (gj) {
+      return fetchJson('/od-dashboard-api/montreal_boundary.geojson').then(function (gj) {
         if (islandLayer) {
           map.removeLayer(islandLayer);
           islandLayer = null;
@@ -351,7 +352,7 @@
         btn.classList.toggle('active', btn.dataset.extent === currentExtent);
       });
 
-      return fetchJson('/api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
+      return fetchJson('/od-dashboard-api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
         zoneIndex = {};
         selectedGeoId = null;
         clearHighlight();
@@ -425,7 +426,7 @@
     PageLoading.init();
     PageLoading.show();
 
-    fetchJson('/api/zone_codes')
+    fetchJson('/od-dashboard-api/zone_codes')
       .then(function (data) {
         if (data && data.zone_codes && window.DashZoneUi) DashZoneUi.setZoneCodeMap(data.zone_codes);
         if (data && data.zone_names && window.DashZoneUi) DashZoneUi.setZoneNameMap(data.zone_names);
