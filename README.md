@@ -13,8 +13,7 @@ Portable **PM23 survey** dashboard — CMM island-eligible car trips, zone maps,
 To set up the application, follow these steps:
 
 ### 1. Database restore
-You can do it manually (Option A) or use an automated Python script (Option B).
-Target database: **`od_dashboard`** · Schema: **`public`** · 8 precomputed tables.
+You can either do it manually (section 1.1) or use an automated Python script (section 1.2). Target database: **`od_dashboard`** · Schema: **`public`** · 8 precomputed tables.
 
 #### 1.1. pgAdmin (Windows)
 
@@ -64,7 +63,7 @@ ORDER BY table_name;
 See also **`PopGen2023/Data/db/README.md`** for the same steps (dump zip in repo).
 
 #### 1.2. Python script
-See below.
+Run the code as shown below.
 
 ##### 1.2.1. Windows
 ```powershell
