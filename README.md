@@ -13,16 +13,16 @@ Portable **PM23 survey** dashboard — CMM island-eligible car trips, zone maps,
 To set up the application, follow these steps:
 
 ### 1. Database restore
-
+You can do it manually (Option A) or use an automated Python script (Option B).
 Target database: **`od_dashboard`** · Schema: **`public`** · 8 precomputed tables.
 
-#### Option A — pgAdmin (Windows)
+#### 1.1. pgAdmin (Windows)
 
-##### Step 1 — Create database
+##### 1.1.1.  Create database
 
 pgAdmin → **Databases** → right-click → **Create** → **Database…** → name: **`od_dashboard`**
 
-##### Step 2 — Prepare schema and PostGIS
+##### 1.1.2. Prepare schema and PostGIS
 
 Query Tool on **`od_dashboard`**, run:
 
@@ -36,7 +36,7 @@ GRANT ALL ON SCHEMA public TO public;
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 ```
 
-##### Step 3 — Restore dump
+##### 1.1.3. Restore dump
 
 Right-click **`od_dashboard`** → **Restore…**
 
@@ -52,7 +52,7 @@ Right-click **`od_dashboard`** → **Restore…**
 
 Click **Restore**.
 
-##### Step 4 — Verif
+##### 1.1.4. Verify
 
 ```sql
 SELECT table_schema, table_name FROM information_schema.tables
@@ -63,10 +63,10 @@ ORDER BY table_name;
 
 See also **`PopGen2023/Data/db/README.md`** for the same steps (dump zip in repo).
 
-### Option B — Python script
+#### 1.2. Python script
 See below.
 
-#### 1. Windows
+##### 1.2.1. Windows
 ```powershell
 # 1. Download od_dashboard_tables.dump from OneDrive (link in README.html)
 #    — or use Data/db/od_dashboard_tables.zip from the PopGen2023 repo
@@ -81,12 +81,10 @@ pip install -r requirements.txt
 
 # 3. Restore DB (create od_dashboard in pgAdmin first)
 python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname od_dashboard
-
-# 4. Run
-python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard
 ```
 
-#### 2. Linux
+##### 1.2.2. Linux
+Note: you can either pass the environment variables before the Python script (as show below) or set them as environment variables in your OS. Also, before you run, make sure you are pointing to the right database and using the right credentials.
 ```sh
 # In this example, we run the app in a custom port (1234), not in the default port
 # 1. Download od_dashboard_tables.dump from OneDrive (link in README.html)
@@ -101,10 +99,14 @@ pip install -r requirements.txt
 
 # 3. Restore DB (create od_dashboard in pgAdmin first)
 PGHOST=localhost PGPORT=5432 PGUSER=yourusername PGPASSWORD=yourpassword PORT=1234 python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname od_dashboard
+```
 
-# 4. Run
+### 2. Run
+Note: you can either pass the environment variables before the Python script (as show below) or set them as environment variables in your OS.
+```sh
 PGHOST=localhost PGPORT=5432 PGUSER=yourusername PGPASSWORD=yourpassword PORT=1234 python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard
 ```
+
 
 Open **http://127.0.0.1:5051/** · Health: **http://127.0.0.1:5051/api/health**
 
