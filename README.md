@@ -10,9 +10,9 @@ Portable **PM23 survey** dashboard — CMM island-eligible car trips, zone maps,
 
 ## Quick start
 
+Windows:
 ```powershell
 # 1. Download od_dashboard_tables.dump from OneDrive (link in README.html)
-#    — or use Data/db/od_dashboard_tables.zip from the PopGen2023 repo
 # 2. Copy into project
 mkdir data\db
 copy %USERPROFILE%\Downloads\od_dashboard_tables.dump data\db\
@@ -22,71 +22,34 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 
-# 3. Restore DB — see "Database restore" below (pgAdmin or script)
+# 3. Restore DB (create od_dashboard in pgAdmin first)
+python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname od_dashboard
+
 # 4. Run
 python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard
 ```
 
+Linux:
+```sh
+# In this example, we run the app in a custom port (1234), not in the default port
+# 1. Download od_dashboard_tables.dump from OneDrive (link in README.html)
+# 2. Copy into project
+mkdir data/db
+cp ~/Downloads/od_dashboard_tables.dump data/db/
+
+# 2. Python deps
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# 3. Restore DB (create od_dashboard in pgAdmin first)
+PGHOST=localhost PGPORT=5432 PGUSER=yourusername PGPASSWORD=yourpassword PORT=1234 python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname od_dashboard
+
+# 4. Run
+PGHOST=localhost PGPORT=5432 PGUSER=yourusername PGPASSWORD=yourpassword PORT=1234 python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard
+```
+
 Open **http://127.0.0.1:5051/** · Health: **http://127.0.0.1:5051/api/health**
-
-## Database restore
-
-Target database: **`od_dashboard`** · Schema: **`public`** · 8 precomputed tables.
-
-### Option A — pgAdmin (Windows)
-
-**Step 1 — Create database**
-
-pgAdmin → **Databases** → right-click → **Create** → **Database…** → name: **`od_dashboard`**
-
-**Step 2 — Prepare schema and PostGIS**
-
-Query Tool on **`od_dashboard`**, run:
-
-```sql
-DROP SCHEMA IF EXISTS public CASCADE;
-
-CREATE SCHEMA public;
-GRANT ALL ON SCHEMA public TO postgres;
-GRANT ALL ON SCHEMA public TO public;
-
-CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
-```
-
-**Step 3 — Restore dump**
-
-Right-click **`od_dashboard`** → **Restore…**
-
-- **General:** Format = `Custom or tar`, Filename = `data\db\od_dashboard_tables.dump`
-- **Data Options** tab:
-
-| Section | Option | Setting |
-|---------|--------|---------|
-| Sections | Pre-data, Post-data, Data | **On** |
-| Type of objects | Only data, Only schema | Off |
-| Do not save | **Owner**, **Privileges** | **On** |
-| Do not save | Tablespaces, Comments, Publications, Subscriptions, Security labels, Table access methods | Off |
-
-Click **Restore**.
-
-**Step 4 — Verify**
-
-```sql
-SELECT table_schema, table_name FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name LIKE '%od10%' OR table_name IN
-('popgen_zones_geom','buildings_footprint','trips_route_emissions')
-ORDER BY table_name;
-```
-
-See also **`PopGen2023/Data/db/README.md`** for the same steps (dump zip in repo).
-
-### Option B — Python script
-
-```powershell
-python scripts/bundle_od_dashboard.py unpack --bundle-dir . `
-  --host localhost --port 5433 --user postgres --password YOUR_PASSWORD `
-  --dbname od_dashboard
-```
 
 ## Layout
 

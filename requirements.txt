@@ -19,3 +19,4 @@ psycopg2-binary==2.9.12
 # Needs scripts/db_utils.py from the full PopGen repo for "pack".
 SQLAlchemy==2.0.51
 greenlet==3.5.1
+db-utils
