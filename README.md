@@ -83,7 +83,7 @@ python scripts/bundle_od_dashboard.py unpack --bundle-dir . --dbname od_dashboar
 ```
 
 ##### 1.2.2. Linux
-Note: you can either pass the environment variables before the Python script (as show below) or set them as environment variables in your OS. Also, before you run, make sure you are pointing to the right database and using the right credentials.
+Note: you can either pass the environment variables before the Python script (as shown below) or set them as environment variables in your OS. Also, before you run, make sure you are pointing to the right database and using the right credentials.
 ```sh
 # In this example, we run the app in a custom port (1234), not in the default port
 # 1. Download od_dashboard_tables.dump from OneDrive (link in README.html)
