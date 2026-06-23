@@ -323,7 +323,7 @@
   }
 
   function loadHostSidebar() {
-    return fetchJson('/api/od/bootstrap', 120000).then(function (boot) {
+    return fetchJson('/od-dashboard-api/od/bootstrap', 120000).then(function (boot) {
       var stats = (boot && boot.stats_island_eligible)
         || (boot && (boot.stats_rules || boot.stats))
         || null;
