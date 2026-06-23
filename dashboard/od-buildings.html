@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base href="/montreal-traffic-emissions-dashboard/">
   <title>PopGen · Actual OD survey (PM23) · Buildings</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -910,7 +911,7 @@
 
     async function checkDashboardServerCapabilities() {
       try {
-        await fetchJson('/api/health');
+        await fetchJson('/od-dashboard-api/health');
         return true;
       } catch (_) {
         return false;
@@ -1485,7 +1486,7 @@
       const fromBoot = buildingScaleFromBoot(by);
       if (fromBoot) applyBuildingScaleBounds(fromBoot);
       try {
-        const raw = await fetchJson('/api/od/building_emission_scale?building_by=' + encodeURIComponent(by));
+        const raw = await fetchJson('/od-dashboard-api/od/building_emission_scale?building_by=' + encodeURIComponent(by));
         applyBuildingScaleBounds(raw);
       } catch (err) {
         if (!fromBoot) console.warn('building emission scale:', err);
@@ -2869,7 +2870,7 @@
 
     async function loadMontrealBoundary() {
       try {
-        const gj = await fetchJson('/api/montreal_boundary.geojson');
+        const gj = await fetchJson('/od-dashboard-api/montreal_boundary.geojson');
         if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) return;
         cachedBoundaryGj = gj;
         Object.keys(mapViews).forEach(applyBoundaryToView);
@@ -2969,15 +2970,15 @@
       const q = new URLSearchParams();
       q.set('zone_geo_id', String(zoneGeoId));
       q.set('limit', '50000');
-      return fetchJson('/api/od/zone_building_fabric?' + q.toString());
+      return fetchJson('/od-dashboard-api/od/zone_building_fabric?' + q.toString());
     }
 
     async function loadZones(minKg, maxKg, zoneBy) {
-      return fetchJson('/api/od/zone_map?' + buildZoneQuery(minKg, maxKg, zoneBy));
+      return fetchJson('/od-dashboard-api/od/zone_map?' + buildZoneQuery(minKg, maxKg, zoneBy));
     }
 
     async function loadBuildings(minKg, maxKg, buildingBy, zoneGeoId) {
-      return fetchJson('/api/od/building_map?' + buildBuildingQuery(minKg, maxKg, buildingBy, zoneGeoId));
+      return fetchJson('/od-dashboard-api/od/building_map?' + buildBuildingQuery(minKg, maxKg, buildingBy, zoneGeoId));
     }
 
     function renderPresetChips() {
@@ -3173,7 +3174,7 @@
         console.error('bootstrap:', err);
         return null;
       });
-      const zoneCodesPromise = fetchJson('/api/zone_codes').catch(() => null);
+      const zoneCodesPromise = fetchJson('/od-dashboard-api/zone_codes').catch(() => null);
       const scalePromise = loadBuildingEmissionScale(activeBuildingBy());
       const zonesPromise = refreshZones().catch(err => {
         console.error('zone maps:', err);
