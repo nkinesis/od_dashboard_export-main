@@ -3169,7 +3169,7 @@
       finishEmbedMapPaint();
       if (!IS_EMBED) setKpiLoading(true);
       const motifLimit = (new URLSearchParams(window.location.search).get('motif_limit') || '24').trim() || '24';
-      const bootUrl = '/api/od/bootstrap';
+      const bootUrl = '/od-dashboard-api/od/bootstrap';
       const bootPromise = fetchJson(bootUrl).catch(err => {
         console.error('bootstrap:', err);
         return null;
