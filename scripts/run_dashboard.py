@@ -2106,7 +2106,7 @@ def api_od10_flows_zones():
     if zone_by not in ("rules", "dest"):
         zone_by = "rules"
     with app.test_request_context(
-        f"/api/od/zone_map?zone_by={zone_by}&min_kg=0&island_only=1&include_geojson=0",
+        f"/od/zone_map?zone_by={zone_by}&min_kg=0&island_only=1&include_geojson=0",
         method="GET",
     ):
         return api_od10_zone_map()

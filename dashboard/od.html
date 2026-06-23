@@ -1025,12 +1025,12 @@
     async function loadDualZoneMaps(minKg, maxKg) {
       const qs = buildZoneQuery(minKg, maxKg);
       try {
-        return await fetchJson('/api/od/zone_maps?' + qs);
+        return await fetchJson('/od/zone_maps?' + qs);
       } catch (batchErr) {
         console.warn('zone_maps batch failed, falling back to two requests:', batchErr);
         const [dest, rules] = await Promise.all([
-          fetchJson('/api/od/zone_map?' + qs + '&zone_by=dest'),
-          fetchJson('/api/od/zone_map?' + qs + '&zone_by=rules'),
+          fetchJson('/od/zone_map?' + qs + '&zone_by=dest'),
+          fetchJson('/od/zone_map?' + qs + '&zone_by=rules'),
         ]);
         return { dest, rules };
       }
@@ -1147,7 +1147,7 @@
       const bootPromise = IS_EMBED
         ? Promise.resolve(null)
         : fetchJson('/api/od/bootstrap').catch(err => { console.error('bootstrap:', err); return null; });
-      const zoneCodesPromise = fetchJson('/api/zone_codes').catch(() => null);
+      const zoneCodesPromise = fetchJson('/zone_codes').catch(() => null);
       const [, , boot, zoneCodes] = await Promise.all([
         loadMontrealBoundary(), loadCmmZoneBoundaries(), bootPromise, zoneCodesPromise,
       ]);
