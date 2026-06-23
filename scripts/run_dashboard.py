@@ -700,7 +700,7 @@ def _arg_float(name: str, default):
         return default
 
 
-@app.route("/api/health")
+@app.route("/health")
 def api_health():
     up = DEPLOY["url_prefix"]
     ap = DEPLOY["api_prefix"]
@@ -735,7 +735,7 @@ def api_internal_error(err):
     )
 
 
-@app.route("/api/montreal_boundary.geojson")
+@app.route("/montreal_boundary.geojson")
 def api_montreal_boundary():
     for fname in ("mtl_boundary_file.geojson", "mtl_boundary_file_padded.geojson"):
         path = _data_dir() / fname
@@ -744,7 +744,7 @@ def api_montreal_boundary():
     return jsonify({"type": "FeatureCollection", "features": []})
 
 
-@app.route("/api/od/zone_codes")
+@app.route("/od/zone_codes")
 @app.route("/api/zone_codes")
 def api_od10_zone_codes():
     return jsonify({"zone_codes": _zone_code_index(), "zone_names": _zone_name_index()})
@@ -1071,7 +1071,7 @@ def _od10_zone_map_rows(
     return {"zones": out, "geojson": geojson_fc}
 
 
-@app.route("/api/od/zone_map")
+@app.route("/od/zone_map")
 @_od10_api_errors
 def api_od10_zone_map():
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
@@ -1130,7 +1130,7 @@ def api_od10_zone_map():
         conn.close()
 
 
-@app.route("/api/od/zone_maps")
+@app.route("/od/zone_maps")
 @_od10_api_errors
 def api_od10_zone_maps():
     """Both choropleths in one response (destination + rules)."""
@@ -1192,7 +1192,7 @@ def api_od10_zone_maps():
         conn.close()
 
 
-@app.route("/api/od/bootstrap")
+@app.route("/od/bootstrap")
 @_od10_api_errors
 def api_od10_bootstrap():
     conn = get_conn()
