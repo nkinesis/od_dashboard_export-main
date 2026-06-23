@@ -1258,38 +1258,21 @@
       ensureMapViewData('bldgRules');
       ensureMapViewData('bldgDest');
       const { minKg, maxKg } = getActiveEmissionRange();
-      const zoneId = selectedGeoId;
-      const [rulesRes, destRes, fabricRes] = await Promise.allSettled([
-        loadBuildings(minKg, maxKg, 'rules', zoneId),
-        loadBuildings(minKg, maxKg, 'dest', zoneId),
-        loadZoneFabric(zoneId),
+      const [rulesRes, destRes] = await Promise.allSettled([
+        loadBuildings(minKg, maxKg, 'rules', selectedGeoId),
+        loadBuildings(minKg, maxKg, 'dest', selectedGeoId),
       ]);
-      let fabricFc = null;
-      let fabricTruncated = false;
-      if (fabricRes.status === 'fulfilled') {
-        const rawFabric = fabricRes.value || {};
-        fabricFc = rawFabric.footprint_fc || null;
-        fabricTruncated = !!rawFabric.fabric_truncated;
-      } else {
-        console.warn('zone building fabric:', fabricRes.reason);
-      }
       if (rulesRes.status === 'fulfilled') {
-        const parsed = parseBuildingMapResponse(rulesRes.value);
-        mergeFabricIntoPayload(parsed, fabricFc, parsed.buildings);
-        parsed.fabricTruncated = fabricTruncated || parsed.fabricTruncated;
-        mapViews.bldgRules.payload = parsed;
+        mapViews.bldgRules.payload = parseBuildingMapResponse(rulesRes.value);
       } else {
         console.error('rules building_map:', rulesRes.reason);
-        mapViews.bldgRules.payload = { buildings: [], truncated: false, footprintFc: fabricFc ? explodeFootprintFc(fabricFc) : null };
+        mapViews.bldgRules.payload = { buildings: [], truncated: false };
       }
       if (destRes.status === 'fulfilled') {
-        const parsed = parseBuildingMapResponse(destRes.value);
-        mergeFabricIntoPayload(parsed, fabricFc, parsed.buildings);
-        parsed.fabricTruncated = fabricTruncated || parsed.fabricTruncated;
-        mapViews.bldgDest.payload = parsed;
+        mapViews.bldgDest.payload = parseBuildingMapResponse(destRes.value);
       } else {
         console.warn('dest building_map:', destRes.reason);
-        mapViews.bldgDest.payload = { buildings: [], truncated: false, footprintFc: fabricFc ? explodeFootprintFc(fabricFc) : null };
+        mapViews.bldgDest.payload = { buildings: [], truncated: false };
       }
     }
 
@@ -2262,7 +2245,6 @@
           renderBuildingLayer(key, vv.payload);
         }
         fitMapViewToContent(key);
-        rescheduleBuildingMapPaint(key);
       }, 120);
     }
 
@@ -2281,7 +2263,7 @@
       renderAllBuildingMaps(false);
     }
 
-    /** Grey fabric on buildingHitPane; emissions on buildingEmissionPane (above zones). */
+    /** Zone choropleth + building footprints on the active building map(s). */
     function renderAllBuildingMaps(refit) {
       if (!IS_BUILDING_PAGE) return;
       const activeKey = activeBuildingViewKey();
@@ -2298,7 +2280,8 @@
         });
         if (refit !== false) {
           fitMapViewToContent(activeKey);
-          rescheduleBuildingMapPaint(activeKey);
+          const av = mapViews[activeKey];
+          if (av && av.map) av.map.invalidateSize(true);
         }
       } else {
         const spec = MAP_SPECS.find(s => s.key === activeKey);
@@ -2355,7 +2338,10 @@
         v.map.removeLayer(v.buildingEmissionLayer);
         v.buildingEmissionLayer = null;
       }
-      v.buildingFootprintLayer = null;
+      if (v.buildingFootprintLayer) {
+        v.map.removeLayer(v.buildingFootprintLayer);
+        v.buildingFootprintLayer = null;
+      }
     }
 
     function attachBuildingFootprintHandlers(layer, feature, viewKey, inventoryById, hasSelection) {
@@ -2480,18 +2466,13 @@
 
       if (!selectedGeoId) return;
 
-      const countEl = document.getElementById('bldgMapCount');
-      try {
-      v.map.invalidateSize({ animate: false });
-      resetBuildingPaneSvgs(v.map);
-
       const buildings = filterBuildingsToSelectedZone((payload && payload.buildings) ? payload.buildings : [], viewKey);
       const valid = buildings.filter(b => validLatLon(b.lat, b.lon));
+      const countEl = document.getElementById('bldgMapCount');
       const truncated = payload && payload.truncated;
       const footprintFc = payload && payload.footprintFc;
-      const fabricFc = footprintGeoJsonForRender(footprintFc);
 
-      const filteredPayload = { buildings: valid, truncated, footprintFc: fabricFc };
+      const filteredPayload = { buildings: valid, truncated, footprintFc };
       if (buildingHeatEnabled()) {
         renderHeat(viewKey, filteredPayload, true);
       } else if (v.heatLayer && v.map.hasLayer(v.heatLayer)) {
@@ -2499,57 +2480,54 @@
       }
 
       const hasSelection = selectedBuildingId && selectedBuildingMapKey === viewKey;
-      const inventoryById = {};
-      buildings.forEach(b => {
-        if (b && b.building_id != null) inventoryById[String(b.building_id)] = b;
-      });
-      const footprintFeatures = fabricFc.features || [];
+      const footprintFeatures = (footprintFc && footprintFc.features && footprintFc.features.length)
+        ? footprintFc.features
+        : [];
 
       if (footprintFeatures.length) {
-        v.buildingFabricLayer = L.geoJSON(fabricFc, {
+        v.buildingFootprintLayer = L.geoJSON(footprintFc, {
           pane: 'buildingHitPane',
-          interactive: true,
-          bubblingMouseEvents: false,
-          className: 'building-footprint-hit',
+          filter(feature) {
+            const t = feature.geometry && feature.geometry.type;
+            return t === 'Polygon' || t === 'MultiPolygon';
+          },
           style(feature) {
-            return buildingFabricBaseStyle(feature.properties, hasSelection);
+            const p = normalizeBuildingMetrics(feature.properties || {});
+            const col = buildingEmissionFillColor(p, buildingEmissionScale);
+            const isSel = hasSelection && footprintPartSelected(p);
+            const isSibling = hasSelection && String(p.building_id) === selectedBuildingId && !isSel;
+            return {
+              fillColor: col,
+              fillOpacity: isSel ? 0.88 : (isSibling ? 0.2 : (hasSelection ? 0.45 : 0.72)),
+              color: isSel ? '#5eead4' : '#334155',
+              weight: isSel ? 2.5 : 1.25,
+              opacity: isSibling ? 0.35 : 1,
+            };
           },
           onEachFeature(feature, layer) {
-            attachBuildingFootprintHandlers(layer, feature, viewKey, inventoryById, hasSelection);
+            const b = buildingFromFootprintFeature(feature);
+            if (!b.building_id) return;
+            const c = layer.getBounds && layer.getBounds().isValid && layer.getBounds().isValid()
+              ? layer.getBounds().getCenter()
+              : null;
+            if (c) {
+              b.lat = c.lat;
+              b.lon = c.lng;
+            }
+            layer.options.buildingId = String(b.building_id);
+            layer.on('click', (ev) => {
+              if (ev) L.DomEvent.stopPropagation(ev);
+              if (ev && ev.latlng) {
+                b._clickLat = ev.latlng.lat;
+                b._clickLon = ev.latlng.lng;
+              }
+              selectBuildingMarker(b, viewKey);
+            });
+            if (!(hasSelection && footprintPartSelected(feature.properties))) {
+              layer.bindTooltip(buildingMetricsTooltipHtml(b), buildingTooltipOptions());
+            }
           },
         }).addTo(v.map);
-
-        if (!buildingHeatEnabled()) {
-          const emissionFeatures = footprintFeatures.filter(function (f) {
-            return !!buildingEmissionOverlayStyle(
-              f.properties,
-              buildingEmissionScale,
-              inventoryById,
-              hasSelection
-            );
-          });
-          if (emissionFeatures.length) {
-            v.buildingEmissionLayer = L.geoJSON(
-              { type: 'FeatureCollection', features: emissionFeatures },
-              {
-                pane: 'buildingEmissionPane',
-                interactive: false,
-                bubblingMouseEvents: false,
-                className: 'building-emission-overlay',
-                style(feature) {
-                  return buildingEmissionOverlayStyle(
-                    feature.properties,
-                    buildingEmissionScale,
-                    inventoryById,
-                    hasSelection
-                  ) || { fillOpacity: 0, opacity: 0, fill: false, stroke: false };
-                },
-              }
-            ).addTo(v.map);
-          }
-        }
-
-        v.buildingFootprintLayer = v.buildingFabricLayer;
       }
 
       if (!valid.length && !footprintFeatures.length) {
@@ -2578,21 +2556,12 @@
         });
       }
 
-      const nFabric = footprintFeatures.length || valid.length;
-      const nInventory = buildings.length;
+      const nShown = footprintFeatures.length || valid.length;
       if (countEl) {
-        let txt = 'zone ' + selectedGeoId + ': ' + nFabric.toLocaleString() + ' footprints';
-        if (nInventory < nFabric) {
-          txt += ' · ' + nInventory.toLocaleString() + ' in emissions filter';
-        }
-        if (truncated) txt += ' · inventory filter truncated';
+        let txt = 'zone ' + selectedGeoId + ': ' + nShown.toLocaleString() + ' buildings';
+        if (truncated) txt += '+';
         if (payload && payload.fabricTruncated) txt += ' · fabric truncated';
         countEl.textContent = txt;
-      }
-      rescheduleBuildingMapPaint(viewKey);
-      } catch (err) {
-        console.error('renderBuildingLayer:', err);
-        if (countEl) countEl.textContent = 'zone ' + selectedGeoId + ': render error (see console)';
       }
     }
 
@@ -2992,7 +2961,6 @@
       const q = buildMapQuery(minKg, maxKg);
       q.set('building_by', buildingBy || 'rules');
       if (zoneGeoId) q.set('zone_geo_id', String(zoneGeoId));
-      q.set('include_footprints', '0');
       q.set('limit', '50000');
       return q.toString();
     }
