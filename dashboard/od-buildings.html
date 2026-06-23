@@ -880,8 +880,8 @@
       const id = encodeURIComponent(String(buildingId));
       const by = encodeURIComponent(buildingBy || 'rules');
       const paths = [
-        '/api/od/building_footprint?building_id=' + id,
-        '/api/od/building_detail?building_id=' + id + '&building_by=' + by,
+        '/od-dashboard-api/od/building_footprint?building_id=' + id,
+        '/od-dashboard-api/od/building_detail?building_id=' + id + '&building_by=' + by,
       ];
       for (let i = 0; i < paths.length; i++) {
         try {
@@ -1120,7 +1120,7 @@
         }
         try {
           detail = await fetchJson(
-            '/api/od/building_detail?building_id=' + encodeURIComponent(selectedBuildingId)
+            '/od-dashboard-api/od/building_detail?building_id=' + encodeURIComponent(selectedBuildingId)
             + '&building_by=' + encodeURIComponent(by)
           );
         } catch (err) {

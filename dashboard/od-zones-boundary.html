@@ -332,7 +332,7 @@
     }
 
     function loadIslandOutline() {
-      return fetchJson('/api/montreal_boundary.geojson').then(function (gj) {
+      return fetchJson('/od-dashboard-api/montreal_boundary.geojson').then(function (gj) {
         if (islandLayer) {
           map.removeLayer(islandLayer);
           islandLayer = null;
@@ -359,7 +359,7 @@
         btn.classList.toggle('active', btn.dataset.extent === currentExtent);
       });
 
-      return fetchJson('/api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
+      return fetchJson('/od-dashboard-api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
         zoneIndex = {};
         selectedGeoId = null;
         clearHighlight();
@@ -433,7 +433,7 @@
     PageLoading.init();
     PageLoading.show();
 
-    fetchJson('/api/zone_codes')
+    fetchJson('/od-dashboard-api/zone_codes')
       .then(function (data) {
         if (data && data.zone_codes && window.DashZoneUi) DashZoneUi.setZoneCodeMap(data.zone_codes);
         if (data && data.zone_names && window.DashZoneUi) DashZoneUi.setZoneNameMap(data.zone_names);

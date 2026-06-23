@@ -1418,7 +1418,7 @@
       if (islandOnly) q.set('island_only', '1');
       try {
         const data = await fetchJson(
-          '/api/od/zone_incoming_flow?' + q.toString(),
+          '/od-dashboard-api/od/zone_incoming_flow?' + q.toString(),
           120000,
           flowsFetchAbort.signal
         );
