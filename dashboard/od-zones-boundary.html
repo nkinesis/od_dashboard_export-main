@@ -198,7 +198,7 @@
     }
     function apiBase() {
       try {
-        var u = (new URLSearchParams(window.location.search).get('api') || '').trim();
+        var u = (new URLSearchParams(window.location.search).get('od-dashboard-api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) {}
       if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
@@ -253,9 +253,9 @@
 
     function pageUrl(path, extraParams) {
       var q = new URLSearchParams(window.location.search);
-      var api = q.get('api');
+      var api = q.get('od-dashboard-api');
       var p = new URLSearchParams();
-      if (api) p.set('api', api);
+      if (api) p.set('od-dashboard-api', api);
       if (extraParams) {
         Object.keys(extraParams).forEach(function (k) {
           p.set(k, extraParams[k]);
@@ -331,7 +331,7 @@
     }
 
     function loadIslandOutline() {
-      return fetchJson('/api/montreal_boundary.geojson').then(function (gj) {
+      return fetchJson('/od-dashboard-api/montreal_boundary.geojson').then(function (gj) {
         if (islandLayer) {
           map.removeLayer(islandLayer);
           islandLayer = null;
@@ -358,7 +358,7 @@
         btn.classList.toggle('active', btn.dataset.extent === currentExtent);
       });
 
-      return fetchJson('/api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
+      return fetchJson('/od-dashboard-api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
         zoneIndex = {};
         selectedGeoId = null;
         clearHighlight();
@@ -432,7 +432,7 @@
     PageLoading.init();
     PageLoading.show();
 
-    fetchJson('/api/zone_codes')
+    fetchJson('/od-dashboard-api/zone_codes')
       .then(function (data) {
         if (data && data.zone_codes && window.DashZoneUi) DashZoneUi.setZoneCodeMap(data.zone_codes);
         if (data && data.zone_names && window.DashZoneUi) DashZoneUi.setZoneNameMap(data.zone_names);
