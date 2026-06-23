@@ -361,8 +361,11 @@
         const u = (new URLSearchParams(window.location.search).get('api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) { /* empty */ }
-      if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
-        return DashConfig.apiBase();
+      //if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+      //  return DashConfig.apiBase();
+      //}
+      if (window.DashConfig && DashConfig.apiBase) {
+          return typeof DashConfig.apiBase === 'function' ? DashConfig.apiBase() : DashConfig.apiBase;
       }
       if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
       return '';
