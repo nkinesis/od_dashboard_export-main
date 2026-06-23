@@ -12,8 +12,11 @@
       var u = (new URLSearchParams(window.location.search).get('api') || '').trim();
       if (u) return u.replace(/\/$/, '');
     } catch (_) { /* empty */ }
-    if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
-      return DashConfig.apiBase();
+    //if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+    //  return DashConfig.apiBase();
+    //}
+    if (window.DashConfig && DashConfig.apiBase) {
+      return typeof DashConfig.apiBase === 'function' ? DashConfig.apiBase() : DashConfig.apiBase;
     }
     if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
     return '';
@@ -323,7 +326,7 @@
   }
 
   function loadHostSidebar() {
-    return fetchJson('/api/od/bootstrap', 120000).then(function (boot) {
+    return fetchJson('/od/bootstrap', 120000).then(function (boot) {
       var stats = (boot && boot.stats_island_eligible)
         || (boot && (boot.stats_rules || boot.stats))
         || null;
