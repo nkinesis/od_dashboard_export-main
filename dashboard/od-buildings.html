@@ -8,13 +8,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="assets/dashboard-redirect-od.js?v=1"></script>
+  <script src="assets/dashboard-config.js?v=2"></script>
+  <script src="assets/dashboard-redirect-od.js?v=2"></script>
   <link rel="stylesheet" href="assets/loading-overlay.css" />
   <link rel="stylesheet" href="assets/dashboard-nav.css" />
   <link rel="stylesheet" href="assets/dashboard-shell.css?v=10" />
   <link rel="stylesheet" href="assets/dashboard-embed.css?v=9" />
   <script src="assets/dashboard-embed.js?v=1"></script>
-  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script src="assets/loading-overlay.js?v=11"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
@@ -314,6 +315,33 @@
     .flow-panel.open { display: block; }
     .flow-panel h4 { margin: 0 0 0.35rem; font-family: Outfit, sans-serif; font-size: 1.05rem; }
     .flow-panel .sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.75rem; }
+    .leaflet-pane.leaflet-tooltip-pane { z-index: 920 !important; }
+    .leaflet-tooltip.building-map-tooltip {
+      z-index: 920 !important;
+      pointer-events: none;
+      border: 1px solid rgba(94, 234, 212, 0.55);
+      background: rgba(12, 17, 25, 0.94);
+      color: #e2e8f0;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    .building-selection-label {
+      background: transparent;
+      border: none;
+    }
+    .building-selection-label-inner {
+      display: inline-block;
+      padding: 0.2rem 0.45rem;
+      border-radius: 6px;
+      background: rgba(12, 17, 25, 0.92);
+      border: 1px solid rgba(94, 234, 212, 0.75);
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.25;
+      white-space: nowrap;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+      transform: translate(-50%, -110%);
+    }
     .flow-highlight {
       margin-top: 0.55rem;
       padding: 0.5rem 0.6rem;
@@ -355,6 +383,13 @@
     }
     .zone-drill-selected path {
       pointer-events: none;
+    }
+    .building-footprint-hit path {
+      pointer-events: all !important;
+      cursor: pointer;
+    }
+    .building-emission-overlay path {
+      pointer-events: none !important;
     }
     .legend-mini { display: flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; margin-top: 0.5rem; color: var(--muted); }
     .flow-legend-bar {
@@ -418,10 +453,10 @@
         <div class="tagline">Greater Montreal · PM23 actual OD</div>
       </div>
       <nav class="dash-nav" aria-label="OD dashboard views">
-        <a class="dash-nav-link" data-page="od-zones" href="/?view=zones">Zone maps</a>
-        <a class="dash-nav-link" data-page="od-buildings" href="/?view=buildings">Buildings</a>
-        <a class="dash-nav-link" data-page="od-flows" href="/?view=flows">Flows</a>
-        <a class="dash-nav-link" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+        <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
+        <a class="dash-nav-link" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Click a zone to explore its buildings</span>
     </header>
@@ -434,7 +469,7 @@
         <div class="kpi"><div class="label">Avg kg / trip</div><div class="value green" id="kpi-avg">—</div></div>
       </div>
       <div class="charts-row-2">
-        <div class="card"><h3>Emissions by category (kg CO₂) · island</h3><canvas id="chart-emissions"></canvas></div>
+        <div class="card"><h3>Emissions by category (t CO₂) · island</h3><canvas id="chart-emissions"></canvas></div>
         <div class="card"><h3>Trips by category · island</h3><canvas id="chart-trips"></canvas></div>
       </div>
       <div class="charts-stack">
@@ -502,7 +537,7 @@
     </section>
   </div>
 
-  <script src="assets/dashboard-nav.js?v=13"></script>
+  <script src="assets/dashboard-nav.js?v=16"></script>
   <script>
     const IS_EMBED = !!(window.DashEmbed && DashEmbed.isEmbed);
     const DASH_PAGE = (document.body.dataset.dashPage || 'zones').trim();
@@ -522,6 +557,9 @@
         const u = (new URLSearchParams(window.location.search).get('api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) { /* empty */ }
+      if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+        return DashConfig.apiBase();
+      }
       if (window.location.protocol === 'file:')
         return 'http://127.0.0.1:5051';
       return '';
@@ -565,20 +603,24 @@
     let buildingZoneLoadToken = 0;
     let selectedBuildingId = null;
     let selectedBuildingMapKey = null;
+    let selectedFootprintPart = null;
 
     function clearBuildingSelection() {
       selectedBuildingId = null;
       selectedBuildingMapKey = null;
+      selectedFootprintPart = null;
       MAP_SPECS.filter(s => s.mapType === 'building').forEach(spec => {
         disposeBuildingHighlightLayer(spec.key);
       });
       const panel = document.getElementById('buildingPanel');
       if (panel) panel.classList.remove('open');
+      syncZoneLayersAfterBuildingSelection();
     }
 
     function disposeBuildingHighlightLayer(viewKey) {
       const v = mapViews[viewKey];
       if (!v || !v.map) return;
+      disposeBuildingLabelLayer(viewKey);
       if (v.buildingHighlightLayer) {
         v.map.removeLayer(v.buildingHighlightLayer);
         v.buildingHighlightLayer = null;
@@ -591,6 +633,72 @@
         v.map.removeLayer(v.buildingHighlightOutline);
         v.buildingHighlightOutline = null;
       }
+    }
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function buildingTooltipOptions() {
+      return {
+        direction: 'top',
+        opacity: 1,
+        sticky: true,
+        className: 'building-map-tooltip',
+      };
+    }
+
+    function buildingSelectionLabelText(building) {
+      const b = building || {};
+      const id = String(b.building_id || '').trim();
+      const addr = b.address != null ? String(b.address).trim() : '';
+      const street = addr ? addr.split(',')[0].trim() : '';
+      if (street) return street + (id ? (' · ' + id) : '');
+      if (b.name && String(b.name).trim()) return String(b.name).trim();
+      return id ? ('Building ' + id) : 'Building';
+    }
+
+    function disposeBuildingLabelLayer(viewKey) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map || !v.buildingLabelLayer) return;
+      v.map.removeLayer(v.buildingLabelLayer);
+      v.buildingLabelLayer = null;
+    }
+
+    function renderBuildingSelectionLabel(viewKey, feature, building) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map) return;
+      disposeBuildingLabelLayer(viewKey);
+      const geom = feature && (feature.geometry || (feature.type && feature.coordinates ? feature : null));
+      if (!geom && feature && feature.type === 'Feature') {
+        return renderBuildingSelectionLabel(viewKey, feature.geometry, building);
+      }
+      if (!geom) return;
+      let bounds;
+      try {
+        bounds = L.geoJSON({ type: 'Feature', geometry: geom, properties: {} }).getBounds();
+      } catch (_) {
+        return;
+      }
+      if (!bounds || !bounds.isValid || !bounds.isValid()) return;
+      const c = bounds.getCenter();
+      const label = buildingSelectionLabelText(building);
+      v.buildingLabelLayer = L.marker(c, {
+        pane: 'buildingLabelPane',
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({
+          className: 'building-selection-label',
+          html: '<div class="building-selection-label-inner">' + escapeHtml(label) + '</div>',
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        }),
+        zIndexOffset: 2000,
+      }).addTo(v.map);
     }
 
     function normalizeBuildingGeojson(geojson) {
@@ -609,17 +717,163 @@
       return null;
     }
 
-    function findFootprintFeatureInPayload(viewKey, buildingId) {
+    function findFootprintFeatureInPayload(viewKey, buildingId, partIndex) {
       const payload = mapViews[viewKey] && mapViews[viewKey].payload;
       const fc = payload && payload.footprintFc;
       if (!fc || !fc.features || !fc.features.length) return null;
       const bid = String(buildingId);
-      return fc.features.find(f => String((f.properties || {}).building_id) === bid) || null;
+      const matches = fc.features.filter(f => String((f.properties || {}).building_id) === bid);
+      if (!matches.length) return null;
+      if (partIndex != null && partIndex !== '') {
+        const hit = matches.find(f => Number((f.properties || {}).footprint_part) === Number(partIndex));
+        if (hit) return hit;
+      }
+      return matches.length === 1 ? matches[0] : matches[0];
+    }
+
+    function collectPolygonsFromGeometry(geometry) {
+      if (!geometry) return [];
+      if (geometry.type === 'Polygon') {
+        return [{ type: 'Polygon', coordinates: geometry.coordinates }];
+      }
+      if (geometry.type === 'MultiPolygon') {
+        return (geometry.coordinates || []).map(rings => ({ type: 'Polygon', coordinates: rings }));
+      }
+      if (geometry.type === 'GeometryCollection') {
+        const out = [];
+        (geometry.geometries || []).forEach(g => {
+          out.push.apply(out, collectPolygonsFromGeometry(g));
+        });
+        return out;
+      }
+      return [];
+    }
+
+    function footprintPolygonParts(geometry) {
+      return collectPolygonsFromGeometry(geometry);
+    }
+
+    function pickLatLonForHighlight(building) {
+      const b = building || {};
+      if (b._clickLat != null && b._clickLon != null) {
+        return { lat: Number(b._clickLat), lon: Number(b._clickLon) };
+      }
+      if (validLatLon(b.lat, b.lon)) return { lat: Number(b.lat), lon: Number(b.lon) };
+      return null;
+    }
+
+    function pickFootprintFeatureForHighlight(feature, building) {
+      const normalized = normalizeBuildingGeojson(feature);
+      if (!normalized || !normalized.geometry) return normalized;
+      const geom = normalized.geometry;
+      const props = normalized.properties || {};
+      if (geom.type === 'Polygon') return normalized;
+      const parts = footprintPolygonParts(geom);
+      if (parts.length <= 1) return normalized;
+      const pt = pickLatLonForHighlight(building);
+      if (pt) {
+        for (let i = 0; i < parts.length; i++) {
+          if (pointInZoneGeometry(pt.lat, pt.lon, parts[i])) {
+            return {
+              type: 'Feature',
+              geometry: parts[i],
+              properties: Object.assign({}, props, { footprint_part: i }),
+            };
+          }
+        }
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        parts.forEach((p, i) => {
+          try {
+            const c = L.geoJSON({ type: 'Feature', geometry: p }).getBounds().getCenter();
+            const d = Math.pow(c.lat - pt.lat, 2) + Math.pow(c.lng - pt.lon, 2);
+            if (d < bestDist) {
+              bestDist = d;
+              bestIdx = i;
+            }
+          } catch (_) { /* empty */ }
+        });
+        return {
+          type: 'Feature',
+          geometry: parts[bestIdx],
+          properties: Object.assign({}, props, { footprint_part: bestIdx }),
+        };
+      }
+      let bestIdx = 0;
+      let bestArea = 0;
+      parts.forEach((p, i) => {
+        try {
+          const bnds = L.geoJSON({ type: 'Feature', geometry: p }).getBounds();
+          if (!bnds || !bnds.isValid()) return;
+          const area = (bnds.getNorth() - bnds.getSouth()) * (bnds.getEast() - bnds.getWest());
+          if (area > bestArea) {
+            bestArea = area;
+            bestIdx = i;
+          }
+        } catch (_) { /* empty */ }
+      });
+      return {
+        type: 'Feature',
+        geometry: parts[bestIdx],
+        properties: Object.assign({}, props, { footprint_part: bestIdx }),
+      };
+    }
+
+    function explodeFootprintFc(footprintFc) {
+      if (!footprintFc || !footprintFc.features) return footprintFc;
+      const out = [];
+      footprintFc.features.forEach(f => {
+        const geom = f.geometry;
+        const props = f.properties || {};
+        if (!geom) return;
+        if (geom.type === 'Polygon') {
+          out.push(f);
+          return;
+        }
+        if (geom.type === 'MultiPolygon') {
+          (geom.coordinates || []).forEach((rings, idx) => {
+            out.push({
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: rings },
+              properties: Object.assign({}, props, {
+                footprint_part: idx,
+                footprint_parts: geom.coordinates.length,
+              }),
+            });
+          });
+          return;
+        }
+        if (geom.type === 'GeometryCollection') {
+          const parts = collectPolygonsFromGeometry(geom);
+          parts.forEach((poly, idx) => {
+            out.push({
+              type: 'Feature',
+              geometry: poly,
+              properties: Object.assign({}, props, {
+                footprint_part: idx,
+                footprint_parts: parts.length,
+              }),
+            });
+          });
+        }
+      });
+      return { type: 'FeatureCollection', features: out };
+    }
+
+    function footprintPartSelected(props) {
+      if (!selectedBuildingId) return false;
+      const p = props || {};
+      if (String(p.building_id) !== String(selectedBuildingId)) return false;
+      if (p.footprint_part == null && selectedFootprintPart == null) return true;
+      if (p.footprint_part != null && selectedFootprintPart != null) {
+        return Number(p.footprint_part) === Number(selectedFootprintPart);
+      }
+      return false;
     }
 
     async function fetchBuildingFootprintGeojson(buildingId, buildingBy, viewKey) {
       if (viewKey) {
-        const cached = findFootprintFeatureInPayload(viewKey, buildingId);
+        const cached = findFootprintFeatureInPayload(viewKey, buildingId, null);
         if (cached) return cached;
       }
       const id = encodeURIComponent(String(buildingId));
@@ -669,6 +923,8 @@
       disposeBuildingHighlightLayer(viewKey);
       let feature = normalizeBuildingGeojson(geojson);
       if (!feature && buildingFallback) feature = footprintFallbackFeature(buildingFallback);
+      if (!feature) return;
+      feature = pickFootprintFeatureForHighlight(feature, buildingFallback);
       if (!feature) return;
 
       const hasTrips = buildingHasTripActivity(buildingFallback);
@@ -736,6 +992,7 @@
           });
         }
       } catch (_) { /* empty */ }
+      renderBuildingSelectionLabel(viewKey, feature, buildingFallback);
     }
 
     function showBuildingPanel(detail, viewKey, fallback) {
@@ -744,16 +1001,21 @@
       const sub = document.getElementById('buildingPanelSub');
       const body = document.getElementById('buildingPanelBody');
       if (!panel || !title || !sub || !body) return;
-      const b = detail && detail.building
-        ? detail.building
-        : (detail && detail.building_id ? detail : (fallback || {}));
+      const b = normalizeBuildingMetrics(
+        detail && detail.building
+          ? detail.building
+          : (detail && detail.building_id ? detail : (fallback || {}))
+      );
       const spec = MAP_SPECS.find(s => s.key === viewKey);
       const byLabel = (spec && spec.buildingBy === 'dest') ? 'Destination attribution' : 'Rules attribution';
       title.textContent = b.name && String(b.name).trim() ? String(b.name).trim() : ('Building ' + (b.building_id || ''));
+      const partsNote = b.footprint_parts > 1
+        ? (' · ' + Number(b.footprint_parts).toLocaleString() + ' footprint parts in source GIS')
+        : '';
       sub.textContent = byLabel + (selectedGeoId ? (' · ' + zoneCt(selectedGeoId)) : '')
-        + ' · trip legs at building (origin or destination)';
-      const tripsVal = b.trips != null ? formatTripsNum(b.trips) : null;
-      const legsVal = b.trips_legs != null ? formatTripsNum(b.trips_legs) : null;
+        + (' · ' + formatTripsNum(b.trips) + ' trips · '
+          + formatKgCo2e(b.total_emissions_g) + ' kg CO₂e · '
+          + formatDistanceKm(b.total_distance_km) + partsNote);
       const addr = b.address != null ? String(b.address).trim() : '';
       const rows = [
         ['Building ID', b.building_id],
@@ -765,12 +1027,14 @@
         ['Units', b.units != null ? formatNum(b.units) : null],
         ['Floors', b.floors != null ? formatNum(b.floors) : null],
         ['Floor area (sq ft)', b.sq_ft != null ? formatNum(b.sq_ft) : null],
-        ['Car trips', tripsVal],
-        ['Distance traveled', b.total_distance_km != null ? formatDistanceKm(b.total_distance_km) : null],
+        ['Car trips', formatTripsNum(b.trips)],
+        ['Distance traveled', formatDistanceKm(b.total_distance_km)],
         ['CO₂ (kg)', formatKgCo2e(b.total_emissions_g)],
       ];
+      const alwaysShow = { 'Car trips': true, 'Distance traveled': true, 'CO₂ (kg)': true, 'Building ID': true };
       body.innerHTML = rows
         .filter(r => {
+          if (alwaysShow[r[0]]) return r[1] != null;
           if (r[0] === 'Address') return !!r[1];
           return r[1] != null && String(r[1]).trim() !== '' && String(r[1]).trim() !== '—';
         })
@@ -795,23 +1059,27 @@
     function addSelectedZoneOutline(viewKey, fc) {
       const v = mapViews[viewKey];
       if (!v || !v.map || !IS_BUILDING_PAGE || !selectedGeoId || !fc || !fc.features) return;
-      disposeZoneOutlineLayer(viewKey);
-      const selFeat = fc.features.find(f => zoneFeatureGeoId(f) === String(selectedGeoId));
-      if (!selFeat) return;
-      v.zoneOutlineLayer = L.geoJSON(selFeat, {
-        pane: 'zoneOutlinePane',
-        interactive: false,
-        style: {
-          fillColor: '#ffffff',
-          fillOpacity: 0,
-          color: '#5eead4',
-          weight: 4,
-          opacity: 1,
-        },
-        onEachFeature(_feature, layer) {
-          if (layer._path) layer._path.style.pointerEvents = 'none';
-        },
-      }).addTo(v.map);
+      // Selected zone is already outlined by the choropleth; extra halo looked like grouped buildings.
+    }
+
+    function closeMapTooltips(map) {
+      if (!map) return;
+      map.eachLayer(function (layer) {
+        if (layer && typeof layer.closeTooltip === 'function') layer.closeTooltip();
+        if (layer && typeof layer.eachLayer === 'function') {
+          layer.eachLayer(function (child) {
+            if (child && typeof child.closeTooltip === 'function') child.closeTooltip();
+          });
+        }
+      });
+    }
+
+    function syncZoneLayersAfterBuildingSelection() {
+      if (!IS_BUILDING_PAGE) return;
+      MAP_SPECS.filter(s => s.mapType === 'building').forEach(spec => {
+        const v = mapViews[spec.key];
+        if (v && v.zonePayload) renderZoneLayer(spec.key, v.zonePayload);
+      });
     }
 
     function attachBuildingMarkerHandlers(marker, building, viewKey) {
@@ -820,30 +1088,34 @@
         if (ev) L.DomEvent.stop(ev);
         selectBuildingMarker(building, viewKey);
       });
-      marker.bindTooltip(
-        '<div style="font-size:11px"><strong>Building ' + String(building.building_id) + '</strong><br>'
-        + formatKgCo2e(building.total_emissions_g) + ' kg CO₂e · ' + formatBuildingTripsLabel(building)
-        + (formatDistanceKm(building.total_distance_km) ? (' · ' + formatDistanceKm(building.total_distance_km)) : '') + '<br>'
-        + '<span style="color:#5eead4">Click for details</span></div>',
-        { direction: 'top', opacity: 1 }
-      );
+      marker.bindTooltip(buildingMetricsTooltipHtml(building), buildingTooltipOptions());
     }
 
     async function selectBuildingMarker(building, viewKey) {
       if (!building || !building.building_id) return;
+      building = normalizeBuildingMetrics(building);
       selectedBuildingId = String(building.building_id);
       selectedBuildingMapKey = viewKey;
+      selectedFootprintPart = building.footprint_part != null ? Number(building.footprint_part) : null;
       MAP_SPECS.filter(s => s.mapType === 'building').forEach(spec => {
         if (spec.key !== viewKey) disposeBuildingHighlightLayer(spec.key);
       });
+      const v0 = mapViews[viewKey];
+      if (v0 && v0.map) closeMapTooltips(v0.map);
       showBuildingPanel(null, viewKey, building);
       const spec = MAP_SPECS.find(s => s.key === viewKey);
       const by = (spec && spec.buildingBy) || 'rules';
       let detail = null;
-      let footprint = findFootprintFeatureInPayload(viewKey, selectedBuildingId);
+      let footprint = findFootprintFeatureInPayload(viewKey, selectedBuildingId, selectedFootprintPart);
       try {
         if (!footprint) {
           footprint = await fetchBuildingFootprintGeojson(selectedBuildingId, by, viewKey);
+        }
+        footprint = pickFootprintFeatureForHighlight(footprint, building);
+        if (footprint && footprint.properties && footprint.properties.footprint_part != null) {
+          selectedFootprintPart = Number(footprint.properties.footprint_part);
+          building.footprint_part = selectedFootprintPart;
+          building.footprint_parts = footprint.properties.footprint_parts;
         }
         try {
           detail = await fetchJson(
@@ -853,11 +1125,13 @@
         } catch (err) {
           console.warn('building detail:', err);
         }
-        if (detail && detail.building && building) {
-          if (detail.building.trips == null && building.trips != null) detail.building.trips = building.trips;
-          if (detail.building.total_emissions_g == null && building.total_emissions_g != null) {
-            detail.building.total_emissions_g = building.total_emissions_g;
-          }
+        if (detail && detail.building) {
+          detail.building = normalizeBuildingMetrics(detail.building);
+          if (building.trips == null && detail.building.trips != null) building.trips = detail.building.trips;
+          if (building.total_emissions_g == null) building.total_emissions_g = detail.building.total_emissions_g;
+          if (building.total_distance_km == null) building.total_distance_km = detail.building.total_distance_km;
+        } else if (detail) {
+          detail.building = normalizeBuildingMetrics(building);
         }
         showBuildingPanel(detail, viewKey, building);
         renderBuildingHighlight(
@@ -866,11 +1140,13 @@
           detail && detail.building ? detail.building : building
         );
         renderBuildingLayer(viewKey, mapViews[viewKey].payload);
+        syncZoneLayersAfterBuildingSelection();
       } catch (err) {
         console.error('building select:', err);
         if (footprint) {
           renderBuildingHighlight(viewKey, footprint, building);
           renderBuildingLayer(viewKey, mapViews[viewKey].payload);
+          syncZoneLayersAfterBuildingSelection();
         }
       }
     }
@@ -896,12 +1172,24 @@
       const el = document.getElementById('bldgMapCount');
       if (!el) return;
       if (selectedGeoId) {
-        const n = filterBuildingsToSelectedZone(
-          (mapViews[key] && mapViews[key].payload && mapViews[key].payload.buildings) || [],
+        const payload = mapViews[key] && mapViews[key].payload;
+        const nFabric = (payload && payload.footprintFc && payload.footprintFc.features)
+          ? payload.footprintFc.features.length : 0;
+        const nInv = filterBuildingsToSelectedZone(
+          (payload && payload.buildings) || [],
           key
         ).length;
-        const trunc = mapViews[key] && mapViews[key].payload && mapViews[key].payload.truncated;
-        el.textContent = 'zone ' + selectedGeoId + ': ' + n.toLocaleString() + ' buildings' + (trunc ? '+' : '');
+        const trunc = payload && payload.truncated;
+        const fabricTrunc = payload && payload.fabricTruncated;
+        if (nFabric || nInv) {
+          let txt = 'zone ' + selectedGeoId + ': ' + (nFabric || nInv).toLocaleString() + ' footprints';
+          if (nInv && nFabric && nInv < nFabric) txt += ' · ' + nInv.toLocaleString() + ' in filter';
+          if (trunc) txt += ' · filter truncated';
+          if (fabricTrunc) txt += ' · fabric truncated';
+          el.textContent = txt;
+        } else {
+          el.textContent = 'zone ' + selectedGeoId + ': 0 buildings';
+        }
       } else {
         const zones = (mapViews[key] && mapViews[key].zonePayload && mapViews[key].zonePayload.zones) || [];
         el.textContent = 'zones: ' + zones.length.toLocaleString() + ' · click to drill down';
@@ -930,6 +1218,7 @@
       MAP_SPECS.filter(s => s.mapType === 'building').forEach(spec => {
         ensureMapViewData(spec.key);
         mapViews[spec.key].payload = { buildings: [], truncated: false };
+        if (mapViews[spec.key].map) closeMapTooltips(mapViews[spec.key].map);
       });
       updateBuildingPageHint();
       renderAllMapLayers();
@@ -942,9 +1231,10 @@
         await refreshLegendScales();
         renderAllMapLayers();
         refitActiveBuildingMap();
-        updateBuildingPanelCounts();
       } catch (err) {
         console.error('building zone load:', err);
+      } finally {
+        if (token === buildingZoneLoadToken) updateBuildingPanelCounts();
       }
     }
 
@@ -968,26 +1258,45 @@
       ensureMapViewData('bldgRules');
       ensureMapViewData('bldgDest');
       const { minKg, maxKg } = getActiveEmissionRange();
-      const [rulesRes, destRes] = await Promise.allSettled([
-        loadBuildings(minKg, maxKg, 'rules', selectedGeoId),
-        loadBuildings(minKg, maxKg, 'dest', selectedGeoId),
+      const zoneId = selectedGeoId;
+      const [rulesRes, destRes, fabricRes] = await Promise.allSettled([
+        loadBuildings(minKg, maxKg, 'rules', zoneId),
+        loadBuildings(minKg, maxKg, 'dest', zoneId),
+        loadZoneFabric(zoneId),
       ]);
+      let fabricFc = null;
+      let fabricTruncated = false;
+      if (fabricRes.status === 'fulfilled') {
+        const rawFabric = fabricRes.value || {};
+        fabricFc = rawFabric.footprint_fc || null;
+        fabricTruncated = !!rawFabric.fabric_truncated;
+      } else {
+        console.warn('zone building fabric:', fabricRes.reason);
+      }
       if (rulesRes.status === 'fulfilled') {
-        mapViews.bldgRules.payload = parseBuildingMapResponse(rulesRes.value);
+        const parsed = parseBuildingMapResponse(rulesRes.value);
+        mergeFabricIntoPayload(parsed, fabricFc, parsed.buildings);
+        parsed.fabricTruncated = fabricTruncated || parsed.fabricTruncated;
+        mapViews.bldgRules.payload = parsed;
       } else {
         console.error('rules building_map:', rulesRes.reason);
-        mapViews.bldgRules.payload = { buildings: [], truncated: false };
+        mapViews.bldgRules.payload = { buildings: [], truncated: false, footprintFc: fabricFc ? explodeFootprintFc(fabricFc) : null };
       }
       if (destRes.status === 'fulfilled') {
-        mapViews.bldgDest.payload = parseBuildingMapResponse(destRes.value);
+        const parsed = parseBuildingMapResponse(destRes.value);
+        mergeFabricIntoPayload(parsed, fabricFc, parsed.buildings);
+        parsed.fabricTruncated = fabricTruncated || parsed.fabricTruncated;
+        mapViews.bldgDest.payload = parsed;
       } else {
         console.warn('dest building_map:', destRes.reason);
-        mapViews.bldgDest.payload = { buildings: [], truncated: false };
+        mapViews.bldgDest.payload = { buildings: [], truncated: false, footprintFc: fabricFc ? explodeFootprintFc(fabricFc) : null };
       }
     }
 
     async function fetchJson(path) {
-      const url = (API || '') + path;
+      const url = (window.DashConfig && typeof DashConfig.apiUrl === 'function')
+        ? DashConfig.apiUrl(path)
+        : ((API || '') + path);
       let r;
       try {
         r = await fetch(url, { cache: 'no-store' });
@@ -1021,14 +1330,37 @@
       return window.DashZoneUi ? DashZoneUi.formatTrips(n) : String(Math.round(Number(n) || 0));
     }
     function formatBuildingTripsLabel(b) {
-      return formatTripsNum(b && b.trips) + ' trips';
+      const m = normalizeBuildingMetrics(b);
+      return formatTripsNum(m.trips) + ' trips';
     }
     function formatDistanceKm(km) {
       const n = Number(km);
-      if (!Number.isFinite(n) || n < 0) return null;
+      if (!Number.isFinite(n) || n < 0) return '0 km';
       if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M km';
       if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k km';
       return n.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' km';
+    }
+
+    /** Explicit 0 for buildings with no trip/emission data (never null/undefined). */
+    function normalizeBuildingMetrics(b) {
+      const m = Object.assign({}, b || {});
+      const legsRaw = m.trips != null ? m.trips : m.trips_legs;
+      const legs = Number(legsRaw);
+      m.trips_legs = Number.isFinite(Number(m.trips_legs)) ? Number(m.trips_legs) : (Number.isFinite(legs) ? legs : 0);
+      m.trips = Number.isFinite(legs) ? legs : m.trips_legs;
+      m.total_emissions_g = Number.isFinite(Number(m.total_emissions_g)) ? Number(m.total_emissions_g) : 0;
+      const km = Number(m.total_distance_km);
+      m.total_distance_km = Number.isFinite(km) ? km : 0;
+      if (m.trips_weighted == null || !Number.isFinite(Number(m.trips_weighted))) m.trips_weighted = 0;
+      return m;
+    }
+
+    function buildingMetricsTooltipHtml(b) {
+      const m = normalizeBuildingMetrics(b);
+      return '<div style="font-size:11px"><strong>Building ' + String(m.building_id) + '</strong><br>'
+        + formatKgCo2e(m.total_emissions_g) + ' kg CO₂e · ' + formatTripsNum(m.trips) + ' trips · '
+        + formatDistanceKm(m.total_distance_km) + '<br>'
+        + '<span style="color:#5eead4">Click for details</span></div>';
     }
     function zonesByIdFromList(zones) {
       if (window.DashZoneUi && DashZoneUi.zonesByIdFromList) {
@@ -1078,6 +1410,9 @@
     function tonnesFromG(g) { return (g || 0) / 1e6; }
     /** Green → yellow → orange → red (reference scale). */
     const BUILDING_NO_TRIP_COLOR = '#475569';
+    /** Base fabric — all zone footprints (grey under emissions overlay). */
+    const BUILDING_BASE_FILL = '#94a3b8';
+    const BUILDING_BASE_STROKE = '#475569';
 
     const EMISSION_COLOR_STOPS = [
       { t: 0, c: '#22c55e' },
@@ -1200,9 +1535,9 @@
         if (legendMode === 'zone') {
           cap.textContent = 'Zone choropleth · click a zone to load building footprints';
         } else if (legendMode === 'zone_buildings') {
-          cap.textContent = 'Building emissions (t CO₂) · zone ' + zoneCt(selectedGeoId);
+          cap.textContent = 'All buildings (grey) · emissions color overlay · zone ' + zoneCt(selectedGeoId);
         } else {
-          cap.textContent = 'Per-building emissions (t CO₂) · zone colours = zone totals';
+          cap.textContent = 'Grey = all footprints · colors = emissions in current filter';
         }
       }
     }
@@ -1263,6 +1598,49 @@
       }
       return Math.round((Number(statsOrG) || 0) / 1000);
     }
+    function totalEmissionsTonnes(statsOrG) {
+      if (statsOrG && typeof statsOrG === 'object') {
+        const g = Number(statsOrG.total_emissions_g);
+        if (Number.isFinite(g)) return g / 1e6;
+        const t = Number(statsOrG.total_emissions_tonnes);
+        if (Number.isFinite(t)) return t;
+        return 0;
+      }
+      return (Number(statsOrG) || 0) / 1e6;
+    }
+    function formatEmissionsTonnes(t) {
+      const n = Number(t);
+      if (!Number.isFinite(n) || n <= 0) return '0 t';
+      if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' t';
+      if (n >= 100) return n.toFixed(0) + ' t';
+      if (n >= 10) return n.toFixed(1) + ' t';
+      return n.toFixed(2) + ' t';
+    }
+    function formatTripsChart(n) {
+      const v = Number(n);
+      if (!Number.isFinite(v) || v < 0) return '0';
+      if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+      if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+      return Math.round(v).toLocaleString();
+    }
+    function donutTooltipLabel(ctx) {
+      const label = ctx.label || '';
+      const t = Number(ctx.parsed) || 0;
+      const arr = ctx.chart.data.datasets[0].data;
+      const total = arr.reduce((a, b) => a + b, 0);
+      const pct = total ? ((t / total) * 100).toFixed(1) : '0';
+      return label + ': ' + formatEmissionsTonnes(t) + ' (' + pct + '%)';
+    }
+    function barEmissionsTooltipLabel(ctx) {
+      const label = ctx.label || '';
+      const t = Number(ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y : ctx.parsed) || 0;
+      return label + ': ' + formatEmissionsTonnes(t);
+    }
+    function barTripsTooltipLabel(ctx) {
+      const label = ctx.label || '';
+      const v = Number(ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y : ctx.parsed) || 0;
+      return label + ': ' + formatTripsChart(v) + ' trips';
+    }
     function avgEmissionsKgPerTrip(avgG) {
       const g = Number(avgG);
       return Number.isFinite(g) ? Math.round(g / 1000) : null;
@@ -1297,6 +1675,62 @@
 
     function emissionColor(tNorm) {
       return colorFromStops(EMISSION_COLOR_STOPS, tNorm);
+    }
+
+    function enableBuildingFootprintHit(layer) {
+      if (!layer) return;
+      layer.on('add', function () {
+        const paths = [];
+        if (this._path) paths.push(this._path);
+        if (this._parts) paths.push.apply(paths, this._parts);
+        if (this._rings) {
+          this._rings.forEach(function (ring) {
+            if (ring && ring._path) paths.push(ring._path);
+          });
+        }
+        paths.forEach(function (path) {
+          if (!path) return;
+          path.style.pointerEvents = 'all';
+          path.style.cursor = 'pointer';
+        });
+      });
+    }
+
+    function footprintInInventory(props, inventoryById) {
+      const p = props || {};
+      if (p.in_inventory === false) return false;
+      if (p.in_inventory === true) return true;
+      return !!(inventoryById && inventoryById[String(p.building_id)]);
+    }
+
+    function buildingFabricBaseStyle(props, hasSelection) {
+      const p = props || {};
+      const isSel = hasSelection && footprintPartSelected(p);
+      const isSibling = hasSelection && String(p.building_id) === selectedBuildingId && !isSel;
+      return {
+        fillColor: BUILDING_BASE_FILL,
+        fillOpacity: isSel ? 0.82 : (isSibling ? 0.35 : (hasSelection ? 0.55 : 0.78)),
+        color: isSel ? '#5eead4' : BUILDING_BASE_STROKE,
+        weight: isSel ? 2.5 : 1.25,
+        opacity: isSibling ? 0.45 : 1,
+        fill: true,
+        stroke: true,
+      };
+    }
+
+    function buildingEmissionOverlayStyle(props, scale, inventoryById, hasSelection) {
+      const p = props || {};
+      if (!footprintInInventory(p, inventoryById) || !buildingHasTripActivity(p)) return null;
+      const isSel = hasSelection && footprintPartSelected(p);
+      const isSibling = hasSelection && String(p.building_id) === selectedBuildingId && !isSel;
+      const col = emissionColor(emissionNormFromG(p.total_emissions_g, scale));
+      return {
+        fillColor: col,
+        fillOpacity: isSel ? 0.92 : (isSibling ? 0.12 : (hasSelection ? 0.48 : 0.82)),
+        color: isSel ? '#ffffff' : 'transparent',
+        weight: isSel ? 2.5 : 0,
+        opacity: isSibling ? 0.3 : 1,
+      };
     }
 
     function buildingHasTripActivity(b) {
@@ -1381,7 +1815,7 @@
         (a, b) => (b.total_emissions_g || 0) - (a.total_emissions_g || 0)
       );
       const labels = sorted.map(d => shortChartLabel(d.category, 14));
-      const emissionsData = sorted.map(d => totalEmissionsKg(d.total_emissions_g));
+      const emissionsData = sorted.map(d => totalEmissionsTonnes(d.total_emissions_g));
       const tripsData = sorted.map(d => d.trips);
       const distanceData = sorted.map(d => d.total_distance_km);
       const totalEmissions = emissionsData.reduce((a, b) => a + b, 0);
@@ -1395,6 +1829,11 @@
         animation: anim,
         plugins: {
           legend: { display: false, labels: { color: '#8b9cb8' } },
+          tooltip: {
+            callbacks: {
+              label: barEmissionsTooltipLabel,
+            },
+          },
           datalabels: {
             color: '#e8eef7',
             font: { size: 9, weight: '500' },
@@ -1402,13 +1841,20 @@
         },
         scales: {
           x: { ticks: { color: '#8b9cb8', maxRotation: 45, minRotation: 0, autoSkip: false }, grid: { color: 'rgba(148,163,184,0.08)' } },
-          y: { beginAtZero: true, ticks: { color: '#8b9cb8' }, grid: { color: 'rgba(148,163,184,0.08)' } }
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: '#8b9cb8',
+              callback: (v) => formatEmissionsTonnes(v),
+            },
+            grid: { color: 'rgba(148,163,184,0.08)' },
+          }
         }
       };
       if (chartEmissions) chartEmissions.destroy();
       chartEmissions = new Chart(document.getElementById('chart-emissions'), {
         type: 'bar',
-        data: { labels, datasets: [{ label: 'kg CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
+        data: { labels, datasets: [{ label: 't CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
         options: {
           ...commonOpts,
           plugins: {
@@ -1431,20 +1877,33 @@
           ...commonOpts,
           plugins: {
             ...commonOpts.plugins,
+            tooltip: {
+              callbacks: { label: barTripsTooltipLabel },
+            },
             datalabels: {
               ...commonOpts.plugins.datalabels,
               anchor: 'end',
               align: 'end',
-              formatter: (value) => (!totalTrips ? '' : ((value / totalTrips) * 100).toFixed(1) + '%'),
+              formatter: (value) => (!totalTrips ? '' : formatTripsChart(value)),
             }
-          }
+          },
+          scales: {
+            ...commonOpts.scales,
+            y: {
+              ...commonOpts.scales.y,
+              ticks: {
+                color: '#8b9cb8',
+                callback: (v) => formatTripsChart(v),
+              },
+            },
+          },
         },
         plugins: [ChartDataLabels]
       });
       if (chartDonut) chartDonut.destroy();
       chartDonut = new Chart(document.getElementById('chart-donut'), {
         type: 'doughnut',
-        data: { labels, datasets: [{ data: sorted.map(d => d.total_emissions_g), backgroundColor: bgColors, borderWidth: 0 }] },
+        data: { labels, datasets: [{ data: emissionsData, backgroundColor: bgColors, borderWidth: 0 }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -1452,6 +1911,9 @@
           cutout: '58%',
           plugins: {
             legend: { position: 'right', labels: { color: '#8b9cb8', boxWidth: 10, font: { size: 10 } } },
+            tooltip: {
+              callbacks: { label: donutTooltipLabel },
+            },
             datalabels: {
               color: '#e8eef7',
               font: { size: 9 },
@@ -1498,7 +1960,7 @@
       document.querySelectorAll('#purposeMotifCard .chart-empty').forEach(n => n.remove());
       const rows = payload.rows;
       const labels = rows.map(d => shortChartLabel(d.motif, 16));
-      const emissionsKg = rows.map(d => totalEmissionsKg(d.total_emissions_g));
+      const emissionsT = rows.map(d => totalEmissionsTonnes(d.total_emissions_g));
       const totalT = emissionsT.reduce((a, b) => a + b, 0);
       const bgColors = rows.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
       const anim = CHART_ANIM;
@@ -1507,7 +1969,7 @@
         type: 'bar',
         data: {
           labels,
-          datasets: [{ label: 'kg CO₂', data: emissionsKg, backgroundColor: bgColors, borderRadius: 6 }]
+          datasets: [{ label: 't CO₂', data: emissionsT, backgroundColor: bgColors, borderRadius: 6 }]
         },
         options: {
           responsive: true,
@@ -1515,6 +1977,9 @@
           animation: anim,
           plugins: {
             legend: { display: false },
+            tooltip: {
+              callbacks: { label: barEmissionsTooltipLabel },
+            },
             datalabels: {
               color: '#e8eef7',
               font: { size: 8, weight: '500' },
@@ -1525,7 +1990,7 @@
           },
           scales: {
             x: { ticks: { color: '#8b9cb8', maxRotation: 55, minRotation: 0, autoSkip: true, maxTicksLimit: 14 }, grid: { color: 'rgba(148,163,184,0.08)' } },
-            y: { beginAtZero: true, ticks: { color: '#8b9cb8' }, grid: { color: 'rgba(148,163,184,0.08)' } }
+            y: { beginAtZero: true, ticks: { color: '#8b9cb8', callback: (v) => formatEmissionsTonnes(v) }, grid: { color: 'rgba(148,163,184,0.08)' } }
           }
         },
         plugins: [ChartDataLabels]
@@ -1590,34 +2055,60 @@
     }
 
     function syncFootprintPropertiesFromBuildings(footprintFc, buildings) {
-      if (!footprintFc || !footprintFc.features || !buildings || !buildings.length) return footprintFc;
+      if (!footprintFc || !footprintFc.features) return footprintFc;
       const byId = {};
-      buildings.forEach(function (b) {
-        if (b && b.building_id != null) byId[String(b.building_id)] = b;
+      (buildings || []).forEach(function (b) {
+        if (b && b.building_id != null) byId[String(b.building_id)] = normalizeBuildingMetrics(b);
       });
       footprintFc.features.forEach(function (f) {
         const p = f.properties || {};
         const b = byId[String(p.building_id)];
-        if (!b) return;
-        p.total_emissions_g = b.total_emissions_g;
-        p.trips = b.trips;
-        p.trips_legs = b.trips_legs;
-        p.total_distance_km = b.total_distance_km;
+        if (b) {
+          p.total_emissions_g = b.total_emissions_g;
+          p.trips = b.trips;
+          p.trips_legs = b.trips_legs;
+          p.total_distance_km = b.total_distance_km;
+          p.in_inventory = true;
+        } else {
+          const z = normalizeBuildingMetrics(p);
+          p.total_emissions_g = z.total_emissions_g;
+          p.trips = z.trips;
+          p.trips_legs = z.trips_legs;
+          p.total_distance_km = z.total_distance_km;
+          if (p.in_inventory == null) p.in_inventory = false;
+        }
         f.properties = p;
       });
       return footprintFc;
     }
 
+    function mergeFabricIntoPayload(payload, footprintFc, buildings) {
+      if (!payload) return payload;
+      let fc = (footprintFc && footprintFc.type === 'FeatureCollection') ? footprintFc : null;
+      if (!fc && payload.footprintFc) fc = payload.footprintFc;
+      if (fc) {
+        fc = syncFootprintPropertiesFromBuildings(fc, buildings || payload.buildings || []);
+        fc = explodeFootprintFc(fc);
+      }
+      payload.footprintFc = fc;
+      return payload;
+    }
+
     function parseBuildingMapResponse(raw) {
-      const buildings = Array.isArray(raw.buildings) ? raw.buildings : [];
+      const buildings = (Array.isArray(raw.buildings) ? raw.buildings : [])
+        .map(normalizeBuildingMetrics);
       let footprintFc = (raw && raw.footprint_fc && raw.footprint_fc.type === 'FeatureCollection')
         ? raw.footprint_fc
         : null;
-      footprintFc = syncFootprintPropertiesFromBuildings(footprintFc, buildings);
+      if (footprintFc) {
+        footprintFc = syncFootprintPropertiesFromBuildings(footprintFc, buildings);
+        footprintFc = explodeFootprintFc(footprintFc);
+      }
       return {
         buildings,
         footprintFc,
         truncated: !!raw.truncated,
+        fabricTruncated: !!raw.fabric_truncated,
         pointSource: (raw && raw.point_source) || null,
       };
     }
@@ -1722,6 +2213,17 @@
           }
         }
         if (selectedGeoId && v.zonePayload && v.zonePayload.geojson && v.zonePayload.geojson.features) {
+          const payload = v.payload;
+          const fabricFc = payload && payload.footprintFc;
+          if (fabricFc && fabricFc.features && fabricFc.features.length) {
+            try {
+              const fb = L.geoJSON(fabricFc).getBounds();
+              if (fb && fb.isValid && fb.isValid()) {
+                map.fitBounds(fb.pad(0.06), { padding: [56, 56], maxZoom: 16, animate: true });
+                return;
+              }
+            } catch (_) { /* fallback to zone bounds */ }
+          }
           const feat = v.zonePayload.geojson.features.find(function (f) {
             return zoneFeatureGeoId(f) === String(selectedGeoId);
           });
@@ -1754,8 +2256,13 @@
       v.map.invalidateSize(true);
       window.setTimeout(function () {
         if (!mapViews[key] || !mapViews[key].map) return;
-        mapViews[key].map.invalidateSize(true);
+        const vv = mapViews[key];
+        vv.map.invalidateSize(true);
+        if (selectedGeoId && vv.payload && vv.payload.footprintFc) {
+          renderBuildingLayer(key, vv.payload);
+        }
         fitMapViewToContent(key);
+        rescheduleBuildingMapPaint(key);
       }, 120);
     }
 
@@ -1771,19 +2278,42 @@
     }
 
     function renderActiveMapLayer() {
-      const key = activeBuildingViewKey();
-      const spec = MAP_SPECS.find(s => s.key === key);
-      if (!spec || spec.mapType !== 'building') return;
-      ensureMapView(key);
-      renderZoneLayer(key, mapViews[key].zonePayload);
+      renderAllBuildingMaps(false);
+    }
+
+    /** Grey fabric on buildingHitPane; emissions on buildingEmissionPane (above zones). */
+    function renderAllBuildingMaps(refit) {
+      if (!IS_BUILDING_PAGE) return;
+      const activeKey = activeBuildingViewKey();
       if (selectedGeoId) {
-        renderBuildingLayer(key, mapViews[key].payload);
-        fitMapViewToContent(key);
+        const zonePaneZ = 380;
+        MAP_SPECS.filter(s => s.mapType === 'building').forEach(function (spec) {
+          ensureMapView(spec.key);
+          const v = mapViews[spec.key];
+          if (!v || !v.map) return;
+          const zp = v.map.getPane('zonePane');
+          if (zp) zp.style.zIndex = String(zonePaneZ);
+          renderZoneLayer(spec.key, v.zonePayload);
+          renderBuildingLayer(spec.key, v.payload);
+        });
+        if (refit !== false) {
+          fitMapViewToContent(activeKey);
+          rescheduleBuildingMapPaint(activeKey);
+        }
       } else {
-        disposeBuildingPointLayer(key);
-        disposeBuildingFootprintLayer(key);
-        if (mapViews[key].heatLayer && mapViews[key].map && mapViews[key].map.hasLayer(mapViews[key].heatLayer)) {
-          mapViews[key].map.removeLayer(mapViews[key].heatLayer);
+        const spec = MAP_SPECS.find(s => s.key === activeKey);
+        if (!spec || spec.mapType !== 'building') return;
+        ensureMapView(activeKey);
+        const v = mapViews[activeKey];
+        if (v && v.map) {
+          const zp = v.map.getPane('zonePane');
+          if (zp) zp.style.zIndex = '430';
+        }
+        renderZoneLayer(activeKey, mapViews[activeKey].zonePayload);
+        disposeBuildingPointLayer(activeKey);
+        disposeBuildingFootprintLayer(activeKey);
+        if (v && v.heatLayer && v.map && v.map.hasLayer(v.heatLayer)) {
+          v.map.removeLayer(v.heatLayer);
         }
       }
       updateBuildingPanelCounts();
@@ -1791,7 +2321,7 @@
 
     function renderAllMapLayers() {
       if (IS_BUILDING_PAGE) {
-        renderActiveMapLayer();
+        renderAllBuildingMaps(true);
         return;
       }
       MAP_SPECS.forEach(s => {
@@ -1816,21 +2346,129 @@
 
     function disposeBuildingFootprintLayer(viewKey) {
       const v = mapViews[viewKey];
-      if (!v || !v.buildingFootprintLayer || !v.map) return;
-      v.map.removeLayer(v.buildingFootprintLayer);
+      if (!v || !v.map) return;
+      if (v.buildingFabricLayer) {
+        v.map.removeLayer(v.buildingFabricLayer);
+        v.buildingFabricLayer = null;
+      }
+      if (v.buildingEmissionLayer) {
+        v.map.removeLayer(v.buildingEmissionLayer);
+        v.buildingEmissionLayer = null;
+      }
       v.buildingFootprintLayer = null;
+    }
+
+    function attachBuildingFootprintHandlers(layer, feature, viewKey, inventoryById, hasSelection) {
+      const p = feature.properties || {};
+      const b = buildingFromFootprintFeature(feature);
+      if (!b.building_id) return;
+      b.footprint_part = p.footprint_part;
+      b.in_inventory = footprintInInventory(p, inventoryById);
+      const c = layer.getBounds && layer.getBounds().isValid && layer.getBounds().isValid()
+        ? layer.getBounds().getCenter()
+        : null;
+      if (c) {
+        b.lat = c.lat;
+        b.lon = c.lng;
+      }
+      layer.options.buildingId = String(b.building_id);
+      enableBuildingFootprintHit(layer);
+      layer.on('click', (ev) => {
+        if (ev) L.DomEvent.stopPropagation(ev);
+        if (ev) L.DomEvent.preventDefault(ev);
+        if (ev && ev.latlng) {
+          b._clickLat = ev.latlng.lat;
+          b._clickLon = ev.latlng.lng;
+        }
+        selectBuildingMarker(b, viewKey);
+      });
+      if (!(hasSelection && footprintPartSelected(p))) {
+        layer.bindTooltip(buildingMetricsTooltipHtml(b), buildingTooltipOptions());
+      }
     }
 
     function buildingFromFootprintFeature(feature) {
       const p = (feature && feature.properties) || {};
-      return {
+      return normalizeBuildingMetrics({
         building_id: p.building_id,
         zone_geo_id: p.zone_geo_id,
         total_emissions_g: p.total_emissions_g,
         trips: p.trips,
+        trips_legs: p.trips_legs,
+        total_distance_km: p.total_distance_km,
         lat: null,
         lon: null,
-      };
+      });
+    }
+
+    function ensureBuildingMapPanes(map) {
+      if (!map || !map.createPane) return;
+      if (!map.getPane('buildingHitPane')) {
+        map.createPane('buildingHitPane');
+      }
+      if (!map.getPane('buildingEmissionPane')) {
+        map.createPane('buildingEmissionPane');
+      }
+      const hitPane = map.getPane('buildingHitPane');
+      const emPane = map.getPane('buildingEmissionPane');
+      if (hitPane) {
+        hitPane.style.zIndex = 720;
+        hitPane.style.pointerEvents = 'auto';
+      }
+      if (emPane) {
+        emPane.style.zIndex = 725;
+        emPane.style.pointerEvents = 'none';
+      }
+    }
+
+    /** Drop stale SVG from building panes (0×0 iframe init leaves invisible paths). */
+    function resetBuildingPaneSvgs(map) {
+      if (!map) return;
+      ensureBuildingMapPanes(map);
+      ['buildingHitPane', 'buildingEmissionPane'].forEach(function (paneName) {
+        const pane = map.getPane(paneName);
+        if (!pane) return;
+        pane.querySelectorAll('svg').forEach(function (svg) { svg.remove(); });
+      });
+    }
+
+    function redrawVectorLayer(layer) {
+      if (!layer) return;
+      if (typeof layer.redraw === 'function') {
+        layer.redraw();
+        return;
+      }
+      if (typeof layer.eachLayer === 'function') {
+        layer.eachLayer(function (child) {
+          if (child && typeof child.redraw === 'function') child.redraw();
+        });
+      }
+    }
+
+    /** Leaflet SVG paths drawn while the map was 0×0 (hidden iframe/panel) need a size fix + redraw. */
+    function refreshBuildingMapPaint(viewKey) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map) return;
+      v.map.invalidateSize({ animate: false });
+      redrawVectorLayer(v.buildingFabricLayer);
+      redrawVectorLayer(v.buildingEmissionLayer);
+      redrawVectorLayer(v.zoneLayer);
+    }
+
+    function rescheduleBuildingMapPaint(viewKey) {
+      refreshBuildingMapPaint(viewKey);
+      window.requestAnimationFrame(function () { refreshBuildingMapPaint(viewKey); });
+      window.setTimeout(function () { refreshBuildingMapPaint(viewKey); }, 150);
+    }
+
+    function footprintGeoJsonForRender(footprintFc) {
+      if (!footprintFc || !footprintFc.features) return { type: 'FeatureCollection', features: [] };
+      const exploded = explodeFootprintFc(footprintFc);
+      const features = (exploded.features || []).filter(function (f) {
+        const t = f.geometry && f.geometry.type;
+        return t === 'Polygon' || t === 'MultiPolygon';
+      });
+      return { type: 'FeatureCollection', features: features };
     }
 
     /** Footprint polygons (real building outlines) + optional centroid dots for the selected zone. */
@@ -1842,13 +2480,18 @@
 
       if (!selectedGeoId) return;
 
+      const countEl = document.getElementById('bldgMapCount');
+      try {
+      v.map.invalidateSize({ animate: false });
+      resetBuildingPaneSvgs(v.map);
+
       const buildings = filterBuildingsToSelectedZone((payload && payload.buildings) ? payload.buildings : [], viewKey);
       const valid = buildings.filter(b => validLatLon(b.lat, b.lon));
-      const countEl = document.getElementById(v.countEl);
       const truncated = payload && payload.truncated;
       const footprintFc = payload && payload.footprintFc;
+      const fabricFc = footprintGeoJsonForRender(footprintFc);
 
-      const filteredPayload = { buildings: valid, truncated, footprintFc };
+      const filteredPayload = { buildings: valid, truncated, footprintFc: fabricFc };
       if (buildingHeatEnabled()) {
         renderHeat(viewKey, filteredPayload, true);
       } else if (v.heatLayer && v.map.hasLayer(v.heatLayer)) {
@@ -1856,53 +2499,57 @@
       }
 
       const hasSelection = selectedBuildingId && selectedBuildingMapKey === viewKey;
-      const footprintFeatures = (footprintFc && footprintFc.features && footprintFc.features.length)
-        ? footprintFc.features
-        : [];
+      const inventoryById = {};
+      buildings.forEach(b => {
+        if (b && b.building_id != null) inventoryById[String(b.building_id)] = b;
+      });
+      const footprintFeatures = fabricFc.features || [];
 
       if (footprintFeatures.length) {
-        v.buildingFootprintLayer = L.geoJSON(footprintFc, {
+        v.buildingFabricLayer = L.geoJSON(fabricFc, {
           pane: 'buildingHitPane',
-          filter(feature) {
-            const t = feature.geometry && feature.geometry.type;
-            return t === 'Polygon' || t === 'MultiPolygon';
-          },
+          interactive: true,
+          bubblingMouseEvents: false,
+          className: 'building-footprint-hit',
           style(feature) {
-            const p = feature.properties || {};
-            const col = buildingEmissionFillColor(p, buildingEmissionScale);
-            const isSel = hasSelection && String(p.building_id) === selectedBuildingId;
-            return {
-              fillColor: col,
-              fillOpacity: isSel ? 0.88 : (hasSelection ? 0.45 : 0.72),
-              color: isSel ? '#ffffff' : '#334155',
-              weight: isSel ? 3 : 1.25,
-              opacity: 1,
-            };
+            return buildingFabricBaseStyle(feature.properties, hasSelection);
           },
           onEachFeature(feature, layer) {
-            const b = buildingFromFootprintFeature(feature);
-            if (!b.building_id) return;
-            const c = layer.getBounds && layer.getBounds().isValid && layer.getBounds().isValid()
-              ? layer.getBounds().getCenter()
-              : null;
-            if (c) {
-              b.lat = c.lat;
-              b.lon = c.lng;
-            }
-            layer.options.buildingId = String(b.building_id);
-            layer.on('click', (ev) => {
-              if (ev) L.DomEvent.stop(ev);
-              selectBuildingMarker(b, viewKey);
-            });
-            layer.bindTooltip(
-              '<div style="font-size:11px"><strong>Building ' + String(b.building_id) + '</strong><br>'
-              + formatKgCo2e(b.total_emissions_g) + ' kg CO₂e · ' + formatBuildingTripsLabel(b)
-              + (formatDistanceKm(b.total_distance_km) ? (' · ' + formatDistanceKm(b.total_distance_km)) : '') + '<br>'
-              + '<span style="color:#5eead4">Click for details</span></div>',
-              { direction: 'top', opacity: 1 }
-            );
+            attachBuildingFootprintHandlers(layer, feature, viewKey, inventoryById, hasSelection);
           },
         }).addTo(v.map);
+
+        if (!buildingHeatEnabled()) {
+          const emissionFeatures = footprintFeatures.filter(function (f) {
+            return !!buildingEmissionOverlayStyle(
+              f.properties,
+              buildingEmissionScale,
+              inventoryById,
+              hasSelection
+            );
+          });
+          if (emissionFeatures.length) {
+            v.buildingEmissionLayer = L.geoJSON(
+              { type: 'FeatureCollection', features: emissionFeatures },
+              {
+                pane: 'buildingEmissionPane',
+                interactive: false,
+                bubblingMouseEvents: false,
+                className: 'building-emission-overlay',
+                style(feature) {
+                  return buildingEmissionOverlayStyle(
+                    feature.properties,
+                    buildingEmissionScale,
+                    inventoryById,
+                    hasSelection
+                  ) || { fillOpacity: 0, opacity: 0, fill: false, stroke: false };
+                },
+              }
+            ).addTo(v.map);
+          }
+        }
+
+        v.buildingFootprintLayer = v.buildingFabricLayer;
       }
 
       if (!valid.length && !footprintFeatures.length) {
@@ -1910,12 +2557,11 @@
         return;
       }
 
-      const nShown = footprintFeatures.length || valid.length;
       if (!footprintFeatures.length) {
         v.buildingLayer = L.layerGroup({ pane: 'buildingHitPane' }).addTo(v.map);
         valid.forEach(b => {
           const col = buildingEmissionFillColor(b, buildingEmissionScale);
-          const isSel = hasSelection && String(b.building_id) === selectedBuildingId;
+          const isSel = hasSelection && footprintPartSelected(b);
           const m = L.circleMarker([b.lat, b.lon], {
             pane: 'buildingHitPane',
             radius: isSel ? 7 : 5,
@@ -1932,10 +2578,21 @@
         });
       }
 
+      const nFabric = footprintFeatures.length || valid.length;
+      const nInventory = buildings.length;
       if (countEl) {
-        let txt = 'zone ' + selectedGeoId + ': ' + nShown.toLocaleString() + ' buildings';
-        if (truncated) txt += '+';
+        let txt = 'zone ' + selectedGeoId + ': ' + nFabric.toLocaleString() + ' footprints';
+        if (nInventory < nFabric) {
+          txt += ' · ' + nInventory.toLocaleString() + ' in emissions filter';
+        }
+        if (truncated) txt += ' · inventory filter truncated';
+        if (payload && payload.fabricTruncated) txt += ' · fabric truncated';
         countEl.textContent = txt;
+      }
+      rescheduleBuildingMapPaint(viewKey);
+      } catch (err) {
+        console.error('renderBuildingLayer:', err);
+        if (countEl) countEl.textContent = 'zone ' + selectedGeoId + ': render error (see console)';
       }
     }
 
@@ -1970,7 +2627,7 @@
               if (isSel) {
                 return {
                   fillColor: '#5eead4',
-                  fillOpacity: 0.05,
+                  fillOpacity: 0,
                   color: '#5eead4',
                   weight: 3.5,
                   opacity: 1,
@@ -2000,16 +2657,18 @@
           onEachFeature(feature, layer) {
             const p = feature.properties || {};
             const zid = String(p.geo_id);
+            // In building drill-down, zone hover tooltips clash with building labels — click still switches zone.
+            const hideZoneTooltip = drillDown;
             let actionHint = '';
-            if (zoneClickable) {
-              actionHint = drillDown
-                ? '<br><span style="color:#5eead4">Click to switch zone</span>'
-                : '<br><span style="color:#5eead4">Click to load buildings</span>';
+            if (zoneClickable && !hideZoneTooltip) {
+              actionHint = '<br><span style="color:#5eead4">Click to load buildings</span>';
             }
-            layer.bindTooltip(
-              zoneTooltipHtml(zid, p, zonesById, actionHint),
-              { direction: 'top', opacity: 1 }
-            );
+            if (!hideZoneTooltip) {
+              layer.bindTooltip(
+                zoneTooltipHtml(zid, p, zonesById, actionHint),
+                { direction: 'top', opacity: 1 }
+              );
+            }
             if (zoneClickable) {
               layer.on('click', (ev) => {
                 if (ev) L.DomEvent.stop(ev);
@@ -2045,11 +2704,13 @@
           fillOpacity: drillDown ? (isSel ? 0.15 : 0.35) : (isIncoming ? 0.9 : 0.88),
           className: (isSel || isIncoming ? 'zone-selected ' : '') + (drillDown && !isSel ? 'zone-drill-peer' : ''),
         });
-        m.bindTooltip(
-          zoneTooltipHtml(z.geo_id, z, zonesById,
-            zoneClickable ? '<br><span style="color:#5eead4">Click to load buildings</span>' : ''),
-          { direction: 'top', opacity: 1 }
-        );
+        if (!drillDown) {
+          m.bindTooltip(
+            zoneTooltipHtml(z.geo_id, z, zonesById,
+              zoneClickable ? '<br><span style="color:#5eead4">Click to load buildings</span>' : ''),
+            { direction: 'top', opacity: 1 }
+          );
+        }
         if (zoneClickable) {
           m.on('click', () => selectBuildingZone(z.geo_id));
         }
@@ -2121,6 +2782,9 @@
         buildingHighlightFill: null,
         buildingHighlightOutline: null,
         buildingFootprintLayer: null,
+        buildingFabricLayer: null,
+        buildingEmissionLayer: null,
+        buildingLabelLayer: null,
         zoneOutlineLayer: null,
         payload: spec.mapType === 'building'
           ? { buildings: [], truncated: false }
@@ -2152,17 +2816,22 @@
         m.createPane('buildingPane');
         m.getPane('buildingPane').style.zIndex = 450;
         m.createPane('buildingHitPane');
-        m.getPane('buildingHitPane').style.zIndex = 650;
+        m.getPane('buildingHitPane').style.zIndex = 720;
+        m.createPane('buildingEmissionPane');
+        m.getPane('buildingEmissionPane').style.zIndex = 725;
         m.createPane('buildingHighlightPane');
         m.getPane('buildingHighlightPane').style.zIndex = 670;
         m.createPane('zoneOutlinePane');
         m.getPane('zoneOutlinePane').style.zIndex = 680;
+        m.createPane('buildingLabelPane');
+        m.getPane('buildingLabelPane').style.zIndex = 930;
+        m.getPane('tooltipPane').style.zIndex = 920;
       }
       if (spec.key === 'rules') {
         m.createPane('flowPane');
         m.getPane('flowPane').style.zIndex = 650;
       }
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap &copy; CARTO',
         subdomains: 'abcd',
         maxZoom: 20,
@@ -2182,6 +2851,9 @@
         buildingHighlightFill: null,
         buildingHighlightOutline: null,
         buildingFootprintLayer: null,
+        buildingFabricLayer: null,
+        buildingEmissionLayer: null,
+        buildingLabelLayer: null,
         zoneOutlineLayer: null,
         payload: spec.mapType === 'building'
           ? { buildings: [], truncated: false }
@@ -2203,10 +2875,10 @@
         interactive: false,
         style: () => ({
           color: '#14b8a6',
-          weight: 2.5,
+          weight: 2,
           opacity: 0.9,
-          fillColor: '#2dd4bf',
-          fillOpacity: 0.07,
+          fill: false,
+          fillOpacity: 0,
         }),
       }).addTo(v.map);
     }
@@ -2243,7 +2915,10 @@
       if (!spec) return null;
       const saved = ensureMapViewData(key);
       if (!saved) return null;
-      if (saved.map) return saved;
+      if (saved.map) {
+        if (IS_BUILDING_PAGE && spec.mapType === 'building') ensureBuildingMapPanes(saved.map);
+        return saved;
+      }
       if (IS_BUILDING_PAGE && spec.mapType === 'building'
         && !buildingAttributionPanelVisible(spec.buildingBy || 'rules')) {
         return saved;
@@ -2317,8 +2992,16 @@
       const q = buildMapQuery(minKg, maxKg);
       q.set('building_by', buildingBy || 'rules');
       if (zoneGeoId) q.set('zone_geo_id', String(zoneGeoId));
+      q.set('include_footprints', '0');
       q.set('limit', '50000');
       return q.toString();
+    }
+
+    async function loadZoneFabric(zoneGeoId) {
+      const q = new URLSearchParams();
+      q.set('zone_geo_id', String(zoneGeoId));
+      q.set('limit', '50000');
+      return fetchJson('/api/od/zone_building_fabric?' + q.toString());
     }
 
     async function loadZones(minKg, maxKg, zoneBy) {
@@ -2378,7 +3061,7 @@
       await refreshLegendScales();
       const heatOn = document.getElementById('heatToggle') && document.getElementById('heatToggle').checked;
       if (IS_BUILDING_PAGE) {
-        renderActiveMapLayer();
+        renderAllBuildingMaps(true);
       } else {
         MAP_SPECS.forEach(spec => {
           const payload = mapViews[spec.key].payload;
@@ -2456,9 +3139,51 @@
     if (IS_EMBED && window.DashEmbed) {
       DashEmbed.bindShow(function () {
         invalidateAllMaps();
-        window.setTimeout(invalidateAllMaps, 120);
-        window.setTimeout(invalidateAllMaps, 400);
+        window.setTimeout(function () {
+          invalidateAllMaps();
+          if (IS_BUILDING_PAGE) {
+            renderAllBuildingMaps(true);
+            refitActiveBuildingMap();
+          }
+        }, 120);
+        window.setTimeout(function () {
+          if (IS_BUILDING_PAGE) renderAllBuildingMaps(true);
+        }, 450);
       });
+    }
+
+    let buildingMapResizeDebounce;
+    window.addEventListener('resize', function () {
+      if (!IS_BUILDING_PAGE) return;
+      clearTimeout(buildingMapResizeDebounce);
+      buildingMapResizeDebounce = setTimeout(function () {
+        renderAllBuildingMaps(true);
+      }, 180);
+    });
+
+    function signalEmbedMapShellReady() {
+      if (!IS_EMBED || !window.DashEmbed) return;
+      DashEmbed.notifyReady();
+      DashEmbed.notifyDataReady({ zones: 0, shell: true });
+      DashEmbed.syncHint();
+    }
+
+    function signalEmbedMapDataReady() {
+      if (!IS_EMBED || !window.DashEmbed) return;
+      const zp = mapViews.bldgRules && mapViews.bldgRules.zonePayload;
+      const n = (zp && zp.zones && zp.zones.length) || 0;
+      DashEmbed.notifyDataReady({ zones: n });
+      DashEmbed.syncHint();
+    }
+
+    function finishEmbedMapPaint() {
+      const activeKey = activeBuildingViewKey();
+      ensureMapView(activeKey);
+      const activeV = mapViews[activeKey];
+      if (activeV && activeV.map) {
+        activeV.map.invalidateSize(true);
+      }
+      refitActiveBuildingMap();
     }
 
     async function load() {
@@ -2471,6 +3196,8 @@
       checkDashboardServerCapabilities();
       if (window.DashNav) DashNav.applyStoredAttributionPanels();
       initMaps();
+      signalEmbedMapShellReady();
+      finishEmbedMapPaint();
       if (!IS_EMBED) setKpiLoading(true);
       const motifLimit = (new URLSearchParams(window.location.search).get('motif_limit') || '24').trim() || '24';
       const bootUrl = '/api/od/bootstrap';
@@ -2479,16 +3206,17 @@
         return null;
       });
       const zoneCodesPromise = fetchJson('/api/zone_codes').catch(() => null);
+      const scalePromise = loadBuildingEmissionScale(activeBuildingBy());
+      const zonesPromise = refreshZones().catch(err => {
+        console.error('zone maps:', err);
+        return err;
+      });
       const [, boot, zoneCodes] = await Promise.all([
         loadMontrealBoundary(), bootPromise, zoneCodesPromise,
       ]);
       bootCacheBuildings = boot;
       syncGlobalBuildingScaleFromCache();
-      await loadBuildingEmissionScale(activeBuildingBy());
-      const zonesPromise = refreshZones().catch(err => {
-        console.error('zone maps:', err);
-        return err;
-      });
+      await scalePromise;
 
       try {
         const zcMap = (boot && boot.zone_codes) || (zoneCodes && zoneCodes.zone_codes);
@@ -2529,7 +3257,7 @@
             onSwitch: function () {
               loadBuildingEmissionScale(activeBuildingBy()).then(function () {
                 refreshLegendScales().then(function () {
-                  renderActiveMapLayer();
+                  renderAllBuildingMaps(true);
                   refitActiveBuildingMap();
                   updateBuildingPageHint();
                   refreshSelectedBuildingForActiveView();
@@ -2538,6 +3266,8 @@
             },
           });
         }
+        renderAllBuildingMaps(false);
+
         const heatToggle = document.getElementById('heatToggle');
         if (heatToggle) {
           heatToggle.addEventListener('change', () => {
@@ -2583,6 +3313,10 @@
 
         const zoneErr = await zonesPromise;
         await refreshLegendScales();
+        renderAllBuildingMaps(true);
+        finishEmbedMapPaint();
+        signalEmbedMapDataReady();
+
         if (zoneErr instanceof Error) {
           const warn = document.createElement('p');
           warn.className = 'err';
@@ -2595,24 +3329,13 @@
         }
         if (!IS_EMBED) setKpiLoading(false);
         await new Promise(r => setTimeout(r, IS_EMBED ? 50 : 150));
-        const activeKey = activeBuildingViewKey();
-        ensureMapView(activeKey);
-        const activeV = mapViews[activeKey];
-        if (activeV && activeV.map) {
-          activeV.map.invalidateSize();
-        }
-        if (IS_EMBED && window.DashEmbed) {
-          const zp = mapViews.bldgRules && mapViews.bldgRules.zonePayload;
-          const n = (zp && zp.zones && zp.zones.length) || 0;
-          DashEmbed.notifyDataReady({ zones: n });
-          DashEmbed.syncHint();
-          DashEmbed.notifyReady();
-        } else if (window.PageLoading) {
+        if (!IS_EMBED && window.PageLoading) {
           await PageLoading.finish(1100);
         }
       } catch (e) {
         if (!IS_EMBED) setKpiLoading(false);
-        if (IS_EMBED && window.DashEmbed) DashEmbed.notifyReady();
+        signalEmbedMapShellReady();
+        signalEmbedMapDataReady();
         if (!IS_EMBED && window.PageLoading) PageLoading.hideNow();
         const p = document.createElement('p');
         p.className = 'err';

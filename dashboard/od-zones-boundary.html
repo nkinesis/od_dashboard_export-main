@@ -122,10 +122,10 @@
         <div class="tagline">CMM zone boundaries · reference map (no emissions)</div>
       </div>
       <nav class="dash-nav" aria-label="OD dashboard views">
-        <a class="dash-nav-link" data-page="od-zones" href="/od.html">Zone maps</a>
-        <a class="dash-nav-link" data-page="od-buildings" href="/od-buildings.html">Buildings</a>
-        <a class="dash-nav-link" data-page="od-flows" href="/od-flows.html">Flows</a>
-        <a class="dash-nav-link active" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+        <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
+        <a class="dash-nav-link active" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Click a zone · search by CT code</span>
     </header>
@@ -185,10 +185,11 @@
     </section>
   </div>
 
+  <script src="assets/dashboard-config.js?v=2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="assets/loading-overlay.js?v=11"></script>
-  <script src="assets/dashboard-nav.js?v=8"></script>
-  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script src="assets/dashboard-nav.js?v=15"></script>
+  <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script>
   (function () {
     function zoneCt(geoId, meta) {
@@ -200,13 +201,19 @@
         var u = (new URLSearchParams(window.location.search).get('api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) {}
+      if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+        return DashConfig.apiBase();
+      }
       if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
       return '';
     }
     var API = apiBase();
 
     function fetchJson(path) {
-      return fetch(API + path).then(function (r) {
+      var url = (window.DashConfig && typeof DashConfig.apiUrl === 'function')
+        ? DashConfig.apiUrl(path)
+        : (API + path);
+      return fetch(url).then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       });

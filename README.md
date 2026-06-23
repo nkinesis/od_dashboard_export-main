@@ -101,13 +101,39 @@ PGHOST=localhost PGPORT=5432 PGUSER=yourusername PGPASSWORD=yourpassword PORT=12
 ```
 
 ### 2. Run
-Note: you can either pass the environment variables before the Python script (as show below) or set them as environment variables in your OS.
-```sh
-PGHOST=localhost PGPORT=5432 PGUSER=yourusername PGPASSWORD=yourpassword PORT=1234 python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard
+
+**Local (default — root URL, `/api` prefix):**
+
+```powershell
+python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard
 ```
 
-
 Open **http://127.0.0.1:5051/** · Health: **http://127.0.0.1:5051/api/health**
+
+**Shared host / reverse proxy (subpath + custom API prefix):**
+
+When the dashboard is mounted under a subpath (e.g. NGCI) and `/api` is already used by another service:
+
+```powershell
+python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard `
+  --url-prefix /montreal-traffic-emissions-dashboard `
+  --api-prefix /od-dashboard-api `
+  --show-boundary-button false
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--url-prefix` | Mount path for HTML and assets (e.g. `/montreal-traffic-emissions-dashboard`) |
+| `--api-prefix` | API route prefix (default `/api`; use `/od-dashboard-api` on shared hosts) |
+| `--show-boundary-button` | `true` (default) or `false` to hide the Boundaries nav link |
+
+Environment variable equivalents: `DASH_URL_PREFIX`, `DASH_API_PREFIX`, `DASH_SHOW_BOUNDARY_BUTTON`.
+
+Example health URL with the flags above:
+
+`https://ngci.encs.concordia.ca/montreal-traffic-emissions-dashboard/od-dashboard-api/health`
+
+The server injects these settings into `assets/dashboard-config.js` at runtime so links and API calls stay under the correct prefix.
 
 ## Layout
 
@@ -117,4 +143,4 @@ Open **http://127.0.0.1:5051/** · Health: **http://127.0.0.1:5051/api/health**
 - `data/` — island boundary GeoJSON
 - `docs/screenshots/` — README figures
 
-See **README.html** for architecture diagrams, UI tour, API list, and troubleshooting flowchart.
+See **README.html** for architecture diagrams, UI tour, API list, shared-host deployment, and troubleshooting flowchart.

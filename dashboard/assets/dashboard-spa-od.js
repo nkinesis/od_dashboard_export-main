@@ -19,16 +19,16 @@
   };
 
   var FRAME_PATHS = {
-    'od-zones': '/od.html',
-    'od-buildings': '/od-buildings.html',
-    'od-flows': '/od-flows.html',
+    'od-zones': 'od.html',
+    'od-buildings': 'od-buildings.html',
+    'od-flows': 'od-flows.html',
   };
 
   var frames = {};
   var ready = {};
   var dataReady = {};
   var activePage = 'od-zones';
-  var FRAME_CACHE_BUST = '20260617-stable-topbar';
+  var FRAME_CACHE_BUST = '20260623-syntax-fix';
 
   function parentAttributionParam() {
     try {
@@ -84,6 +84,17 @@
     } catch (_) { /* empty */ }
   }
 
+  function spaUrl(params) {
+    if (window.DashNav && typeof DashNav.spaHistoryUrl === 'function') {
+      return DashNav.spaHistoryUrl(params);
+    }
+    if (window.DashConfig && typeof DashConfig.spaHistoryUrl === 'function') {
+      return DashConfig.spaHistoryUrl(params);
+    }
+    var q = params && typeof params.toString === 'function' ? params.toString() : '';
+    return '/' + (q ? '?' + q : '');
+  }
+
   function openFlowsWithDest(detail) {
     var dest = detail && detail.dest_geo_id ? String(detail.dest_geo_id) : '';
     var zb = detail && detail.zone_by === 'dest' ? 'dest' : 'rules';
@@ -95,7 +106,7 @@
       else params.delete('dest_geo_id');
       if (zb === 'dest') params.set('attribution', 'dest');
       else params.delete('attribution');
-      var url = '/' + (params.toString() ? '?' + params.toString() : '');
+      var url = spaUrl(params);
       if (window.history && window.history.pushState) {
         window.history.pushState({ dashPage: 'od-flows' }, '', url);
       }
@@ -111,7 +122,10 @@
   }
 
   function frameUrl(page) {
-    var base = FRAME_PATHS[page] || '/od.html';
+    var rel = FRAME_PATHS[page] || 'od.html';
+    var base = (window.DashConfig && DashConfig.dashUrl)
+      ? DashConfig.dashUrl('/' + rel)
+      : ('/' + rel);
     var params = new URLSearchParams();
     params.set('embed', '1');
     params.set('v', FRAME_CACHE_BUST);
@@ -187,7 +201,7 @@
       var view = VIEW_BY_PAGE[page] || 'zones';
       params.set('view', view);
       var q = params.toString();
-      var url = '/' + (q ? '?' + q : '');
+      var url = spaUrl(params);
       if (window.history && window.history.pushState) {
         window.history.pushState({ dashPage: page }, '', url);
       }
@@ -250,12 +264,16 @@
         resolve();
       }
       var onMsg = function (e) {
-        if (e.data && e.data.type === 'dash-data-ready' && e.data.page === page) {
+        if (!e.data) return;
+        if (e.data.type === 'dash-data-ready' && e.data.page === page) {
+          finish();
+        }
+        if (e.data.type === 'dash-ready' && e.data.page === page) {
           finish();
         }
       };
       window.addEventListener('message', onMsg);
-      window.setTimeout(finish, timeoutMs == null ? 180000 : timeoutMs);
+      window.setTimeout(finish, timeoutMs == null ? 45000 : timeoutMs);
     });
   }
 
@@ -276,7 +294,7 @@
     }));
     var dismissP = Promise.race([
       Promise.all([sidebarP, activeFrameP, activeDataP]),
-      new Promise(function (resolve) { window.setTimeout(resolve, 50000); }),
+      new Promise(function (resolve) { window.setTimeout(resolve, 18000); }),
     ]);
     return dismissP
       .then(function () { return PageLoading.finish(350); })
@@ -302,7 +320,7 @@
       if (normalized === 'dest') params.set('attribution', 'dest');
       else params.delete('attribution');
       var q = params.toString();
-      var url = '/' + (q ? '?' + q : '');
+      var url = spaUrl(params);
       if (window.history && window.history.replaceState) {
         window.history.replaceState(window.history.state, '', url);
       }

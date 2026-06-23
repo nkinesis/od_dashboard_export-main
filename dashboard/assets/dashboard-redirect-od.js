@@ -15,11 +15,13 @@
   if (!view) return;
   var params = new URLSearchParams(window.location.search);
   params.set('view', view);
-  // Preserve attribution when redirecting standalone OD pages into the SPA host.
   try {
     if (params.get('attribution') !== 'dest' && sessionStorage.getItem('dashAttribution') === 'dest') {
       params.set('attribution', 'dest');
     }
   } catch (_) { /* empty */ }
-  window.location.replace('/?' + params.toString());
+  var target = (window.DashConfig && typeof DashConfig.spaHistoryUrl === 'function')
+    ? DashConfig.spaHistoryUrl(params)
+    : ('/' + (params.toString() ? '?' + params.toString() : ''));
+  window.location.replace(target);
 })();

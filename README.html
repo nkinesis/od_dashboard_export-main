@@ -213,6 +213,7 @@
         <li><a href="#restore">Restore PostgreSQL</a></li>
         <li><a href="#python">Python environment</a></li>
         <li><a href="#run">Start the server</a></li>
+        <li><a href="#deploy">Shared host / subpath</a></li>
         <li><a href="#verify">Verify &amp; open browser</a></li>
         <li><a href="#api">API endpoints</a></li>
         <li><a href="#trouble">Troubleshooting</a></li>
@@ -456,16 +457,34 @@ pip install -r requirements.txt</code></pre>
     <p>Packages: <code>Flask</code>, <code>flask-cors</code>, <code>psycopg2-binary</code>, <code>SQLAlchemy</code> (for unpack). Full machine snapshot: <code>requirements-lock.txt</code>.</p>
 
     <h2 id="run">Start the server</h2>
+    <p><strong>Local (default)</strong> — app at site root, API under <code>/api</code>:</p>
     <pre><code>python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard</code></pre>
-    <p>Other PostgreSQL settings use your environment or standard libpq defaults. Run <code>python scripts/run_dashboard.py --help</code> for optional flags.</p>
+    <p>Other PostgreSQL settings use your environment or standard libpq defaults. Run <code>python scripts/run_dashboard.py --help</code> for all flags.</p>
 
     <table>
       <thead><tr><th>Flag</th><th>Suggested value</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td><code>--db-name</code></td><td><code>od_dashboard</code></td><td>PostgreSQL database (create in pgAdmin first)</td></tr>
         <tr><td><code>--bundle-root</code></td><td><code>.</code></td><td>Folder with <code>dashboard/</code> + <code>data/</code></td></tr>
+        <tr><td><code>--url-prefix</code></td><td><em>(empty)</em></td><td>Subpath when behind a reverse proxy (see below)</td></tr>
+        <tr><td><code>--api-prefix</code></td><td><code>/api</code></td><td>API route prefix; use <code>/od-dashboard-api</code> if <code>/api</code> is taken</td></tr>
+        <tr><td><code>--show-boundary-button</code></td><td><code>true</code></td><td>Set <code>false</code> to hide the Boundaries nav link</td></tr>
       </tbody>
     </table>
+
+    <h2 id="deploy">Shared host / subpath (e.g. NGCI)</h2>
+    <p>When the dashboard is served under a subpath and another app already uses <code>/api</code>, pass mount prefixes at startup. The server injects them into <code>assets/dashboard-config.js</code> so HTML links and API calls stay correct (including browser Back/forward).</p>
+    <pre><code>python scripts/run_dashboard.py --bundle-root . --db-name od_dashboard ^
+  --url-prefix /montreal-traffic-emissions-dashboard ^
+  --api-prefix /od-dashboard-api ^
+  --show-boundary-button false</code></pre>
+    <p>Environment variable equivalents: <code>DASH_URL_PREFIX</code>, <code>DASH_API_PREFIX</code>, <code>DASH_SHOW_BOUNDARY_BUTTON</code>.</p>
+    <p>Example URLs (Concordia NGCI):</p>
+    <ul>
+      <li>Dashboard: <code>https://ngci.encs.concordia.ca/montreal-traffic-emissions-dashboard/</code></li>
+      <li>Health: <code>https://ngci.encs.concordia.ca/montreal-traffic-emissions-dashboard/od-dashboard-api/health</code></li>
+    </ul>
+    <p>The health response includes a <code>deploy</code> object confirming <code>url_prefix</code>, <code>api_prefix</code>, and <code>show_boundary_button</code>.</p>
 
     <div class="card warn">
       <p><strong>Kill stale server</strong> if port 5051 is stuck on old code:</p>
@@ -494,10 +513,11 @@ pip install -r requirements.txt</code></pre>
     </figure>
 
     <h2 id="api">API endpoints (selection)</h2>
+    <p>Paths below use the default <code>/api</code> prefix. With <code>--api-prefix /od-dashboard-api</code>, prepend that instead (and include <code>--url-prefix</code> when mounted under a subpath).</p>
     <table>
       <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
       <tbody>
-        <tr><td><code>GET /api/health</code></td><td>Server + DB connectivity check</td></tr>
+        <tr><td><code>GET /api/health</code></td><td>Server + DB connectivity check (includes <code>deploy</code> settings)</td></tr>
         <tr><td><code>GET /api/od/bootstrap</code></td><td>KPIs + sidebar charts data</td></tr>
         <tr><td><code>GET /api/od/zone_maps</code></td><td>Zone choropleth GeoJSON</td></tr>
         <tr><td><code>GET /api/od/building_map</code></td><td>Buildings for selected zone</td></tr>

@@ -99,6 +99,9 @@
   }
 
   function markActiveNav(activePage) {
+    if (window.DashConfig && typeof DashConfig.applyBoundaryNav === 'function') {
+      DashConfig.applyBoundaryNav();
+    }
     var page = activePage || (document.body && document.body.dataset.dashPage) || '';
     if (page === 'host') return;
 
@@ -145,11 +148,28 @@
     return false;
   }
 
+  function dashUrl(path) {
+    if (window.DashConfig && typeof DashConfig.dashUrl === 'function') {
+      return DashConfig.dashUrl(path);
+    }
+    path = String(path || '/');
+    if (path.charAt(0) !== '/') path = '/' + path;
+    return path;
+  }
+
+  function spaHistoryUrl(params) {
+    if (window.DashConfig && typeof DashConfig.spaHistoryUrl === 'function') {
+      return DashConfig.spaHistoryUrl(params);
+    }
+    var q = params && typeof params.toString === 'function' ? params.toString() : '';
+    return '/' + (q ? '?' + q : '');
+  }
+
   var OD_PAGE_PATHS = {
-    'od-zones': '/?view=zones',
-    'od-buildings': '/?view=buildings',
-    'od-flows': '/?view=flows',
-    'od-boundaries': '/od-zones-boundary.html',
+    'od-zones': '?view=zones',
+    'od-buildings': '?view=buildings',
+    'od-flows': '?view=flows',
+    'od-boundaries': 'od-zones-boundary.html',
   };
 
   function appendApiQuery(base) {
@@ -157,11 +177,13 @@
   }
 
   function fullPageUrl(page) {
-    var base;
-    if (OD_PAGE_PATHS[page]) base = OD_PAGE_PATHS[page];
-    else if (page === 'zones') base = '/';
-    else if (page === 'boundaries') base = '/zones-boundary.html';
-    else base = '/' + page + '.html';
+    var rel = OD_PAGE_PATHS[page];
+    if (!rel) {
+      if (page === 'zones') rel = '/';
+      else if (page === 'boundaries') rel = 'od-zones-boundary.html';
+      else rel = page + '.html';
+    }
+    var base = dashUrl(rel.indexOf('?') === 0 ? rel : (rel.indexOf('/') === 0 ? rel : '/' + rel));
     return appendPreservedQuery(base);
   }
 
@@ -279,7 +301,7 @@
       });
       if (!skipSave) saveAttribution(attr);
       if (ensureMap) ensureMap(key, attr);
-      if (onSwitch) onSwitch(key, attr);
+      if (onSwitch && !skipSave) onSwitch(key, attr);
       if (mapViews && mapViews[key] && mapViews[key].map) {
         window.setTimeout(function () {
           mapViews[key].map.invalidateSize(true);
@@ -312,5 +334,7 @@
     appendPreservedQuery: appendPreservedQuery,
     navigateWithTransition: navigateWithTransition,
     markActiveNav: markActiveNav,
+    dashUrl: dashUrl,
+    spaHistoryUrl: spaHistoryUrl,
   };
 })();

@@ -7,7 +7,8 @@ zone_emissions_route_assignment* or zone_emissions_rules* (legacy zone_emissions
 when route_attributed_geo_id exists, /api/zone_map aggregates by that rules-attributed zone.
 (Montreal island filter on /api/zone_map by default: uses tight Data/mtl_boundary_file.geojson for SQL;
 padded buffer is not used for filtering because it overlaps Laval / South Shore. Choropleth polygons
-are clipped to that outline when routes_only + island_only. Map outline API may still serve padded.)
+are clipped to that outline when routes_only + island_only. Map outline API serves the
+unpadded île shoreline (not the ~1200 m padded buffer, which extends into the river).
 /api/zone_map returns {"zones":[...], "geojson": FeatureCollection|null}
 with polygons from popgen_zones_geom when available.
 
@@ -76,13 +77,31 @@ for _pg_key, _pg_env in (
     if _pg_val:
         DB_PARAMS[_pg_key] = _pg_val
 SCHEMA = "public"
-_ZONES_CSV = Path(__file__).resolve().parent.parent / "Data" / "popgen_inputs" / "zones.csv"
-_GEO_SP23_CSV = Path(__file__).resolve().parent.parent / "Data" / "popgen_inputs" / "geo_zone_sp23.csv"
+REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "Data"
 _ZONE_CODE_BY_GEO: dict[str, str] | None = None
 _ZONE_GEO_BY_CODE: dict[str, str] | None = None
 _ZONE_NAME_BY_GEO: dict[str, str] | None = None
 ZONE_SHORT_PREFIX = "mtl"
 CAR_MODE_GROUPS = "('1','1.0','10','11','10.0','11.0')"
+
+
+def _popgen_inputs_dir() -> Path:
+    for candidate in (
+        REPO_DATA_DIR / "popgen_inputs",
+        Path(__file__).resolve().parent.parent / "data" / "popgen_inputs",
+        Path(__file__).resolve().parent.parent / "Data" / "popgen_inputs",
+    ):
+        if candidate.is_dir():
+            return candidate
+    return REPO_DATA_DIR / "popgen_inputs"
+
+
+def _zones_csv_path() -> Path:
+    return _popgen_inputs_dir() / "zones.csv"
+
+
+def _geo_sp23_csv_path() -> Path:
+    return _popgen_inputs_dir() / "geo_zone_sp23.csv"
 
 
 def _zone_code_index() -> dict[str, str]:
@@ -91,10 +110,11 @@ def _zone_code_index() -> dict[str, str]:
     if _ZONE_CODE_BY_GEO is None:
         by_geo: dict[str, str] = {}
         by_code: dict[str, str] = {}
-        if _ZONES_CSV.exists():
+        zones_csv = _zones_csv_path()
+        if zones_csv.exists():
             import csv
 
-            with _ZONES_CSV.open(encoding="utf-8", newline="") as f:
+            with zones_csv.open(encoding="utf-8", newline="") as f:
                 for row in csv.DictReader(f):
                     gid = str(row.get("geo_id", "")).strip()
                     zc = str(row.get("zone_code", "")).strip()
@@ -116,19 +136,57 @@ def _zone_code_for(geo_id) -> str | None:
     return _zone_code_index().get(str(geo_id).strip())
 
 
+def _zone_names_from_db() -> dict[str, str]:
+    """geo_id -> name from popgen_zones_geom.name (when column exists)."""
+    by_geo: dict[str, str] = {}
+    try:
+        conn = psycopg2.connect(**DB_PARAMS)
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = %s AND table_name = 'popgen_zones_geom' AND column_name = 'name'
+                LIMIT 1
+                """,
+                (SCHEMA,),
+            )
+            if not cur.fetchone():
+                return by_geo
+            cur.execute(
+                f"""
+                SELECT geo_id::text, name::text
+                FROM {SCHEMA}.popgen_zones_geom
+                WHERE name IS NOT NULL AND btrim(name::text) <> ''
+                """
+            )
+            for gid, nom in cur.fetchall():
+                g = str(gid).strip()
+                n = str(nom).strip()
+                if g and n:
+                    by_geo[g] = n
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return by_geo
+
+
 def _zone_name_index() -> dict[str, str]:
-    """PopGen geo_id -> ARTM zone label (nomsp from geo_zone_sp23.csv)."""
+    """PopGen geo_id -> zone label (DB popgen_zones_geom.name, else geo_zone_sp23.csv)."""
     global _ZONE_NAME_BY_GEO
     if _ZONE_NAME_BY_GEO is None:
-        by_geo: dict[str, str] = {}
-        if _GEO_SP23_CSV.exists():
+        by_geo = _zone_names_from_db()
+        geo_sp23 = _geo_sp23_csv_path()
+        if geo_sp23.exists():
             import csv
 
-            with _GEO_SP23_CSV.open(encoding="utf-8", newline="") as f:
+            with geo_sp23.open(encoding="utf-8", newline="") as f:
                 for row in csv.DictReader(f):
                     gid = str(row.get("geo_id", "")).strip()
                     nom = str(row.get("nomsp", "")).strip()
-                    if gid and nom:
+                    if gid and nom and gid not in by_geo:
                         by_geo[gid] = nom
         _ZONE_NAME_BY_GEO = by_geo
     return _ZONE_NAME_BY_GEO
@@ -161,6 +219,19 @@ def _zone_short_name_for(geo_id) -> str | None:
         return None
     short = _extract_zone_short_name(nom)
     return short or None
+
+
+def _zone_label_for(geo_id) -> str | None:
+    """UI label: short locality name + geo_id, e.g. 'Ville-Marie - 135'."""
+    if geo_id is None:
+        return None
+    g = str(geo_id).strip()
+    if not g:
+        return None
+    short = _zone_short_name_for(g)
+    if short:
+        return f"{short} - {g}"
+    return g
 
 
 def _short_zone_id(geo_id) -> str | None:
@@ -236,9 +307,13 @@ def _attach_zone_code(row: dict, *, geo_id_key: str = "geo_id") -> dict:
         row["short_id"] = sid
         if prefix:
             row[f"{prefix}short_id"] = sid
+    zl = _zone_label_for(g)
+    if zl:
+        row["zone_label"] = zl
+        if prefix:
+            row[f"{prefix}zone_label"] = zl
     return row
 _RESOLVED: dict | None = None
-REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "Data"
 MOTIF18_LABELS = {
     "1": "Work",
     "2": "Work+",
@@ -286,9 +361,8 @@ def _montreal_island_geometry_geojson_for_postgis() -> str | None:
     """
     GeoJSON geometry for SQL island filter: use the **unpadded** île outline first.
 
-    `mtl_boundary_file_padded.geojson` is the same polygon buffered ~1200 m outward (see
-    buffer_mtl_boundary.py); ST_Intersects against it wrongly includes Laval / South Shore zones.
-    The map outline API still prefers padded for a softer shoreline; filtering uses tight landmass.
+    The map outline API serves the **unpadded** île shoreline first. Padded (~1200 m outward)
+    is only a fallback when the tight file is missing.
     """
     global _ISLAND_FILTER_GEOM_JSON
     if _ISLAND_FILTER_GEOM_JSON is not None:
@@ -700,6 +774,7 @@ def _build_zone_map_geojson(
                     "zone_code": z.get("zone_code") or _zone_code_for(z["geo_id"]),
                     "zone_name": z.get("zone_name") or _zone_name_for(z["geo_id"]),
                     "zone_short_name": z.get("zone_short_name") or _zone_short_name_for(z["geo_id"]),
+                    "zone_label": z.get("zone_label") or _zone_label_for(z["geo_id"]),
                     "short_id": z.get("short_id") or _short_zone_id(z["geo_id"]),
                     "total_emissions_g": z["total_emissions_g"],
                     "trips": z["trips"],
@@ -818,12 +893,11 @@ def _build_zones_boundary_geojson(cur, *, island_only: bool) -> tuple[dict | Non
             {
                 "type": "Feature",
                 "geometry": geom,
-                "properties": {
+                "properties": _attach_zone_code({
                     "geo_id": geo_id,
-                    "zone_code": _zone_code_for(geo_id),
                     "lat": lat,
                     "lon": lon,
-                },
+                }),
             }
         )
     if not features:
@@ -1628,7 +1702,7 @@ def api_health():
 
 @app.route("/api/montreal_boundary.geojson")
 def api_montreal_boundary():
-    for fname in ("mtl_boundary_file_padded.geojson", "mtl_boundary_file.geojson"):
+    for fname in ("mtl_boundary_file.geojson", "mtl_boundary_file_padded.geojson"):
         p = REPO_DATA_DIR / fname
         if p.is_file():
             return send_file(p, mimetype="application/geo+json")

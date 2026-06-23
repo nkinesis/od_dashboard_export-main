@@ -12,13 +12,18 @@
       var u = (new URLSearchParams(window.location.search).get('api') || '').trim();
       if (u) return u.replace(/\/$/, '');
     } catch (_) { /* empty */ }
+    if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+      return DashConfig.apiBase();
+    }
     if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
     return '';
   }
 
   function fetchJson(path, timeoutMs) {
     var ms = timeoutMs == null ? 25000 : timeoutMs;
-    var url = (apiBase() || '') + path;
+    var url = (window.DashConfig && typeof DashConfig.apiUrl === 'function')
+      ? DashConfig.apiUrl(path)
+      : ((apiBase() || '') + path);
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = ctrl ? window.setTimeout(function () { ctrl.abort(); }, ms) : null;
     return fetch(url, { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
@@ -80,6 +85,41 @@
     return Math.round((Number(statsOrG) || 0) / 1000);
   }
 
+  function totalEmissionsTonnes(statsOrG) {
+    if (statsOrG && typeof statsOrG === 'object') {
+      var g = Number(statsOrG.total_emissions_g);
+      if (Number.isFinite(g)) return g / 1e6;
+      return 0;
+    }
+    return (Number(statsOrG) || 0) / 1e6;
+  }
+
+  function formatEmissionsTonnes(t) {
+    var n = Number(t);
+    if (!Number.isFinite(n) || n <= 0) return '0 t';
+    if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' t';
+    if (n >= 100) return n.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' t';
+    if (n >= 10) return n.toFixed(1) + ' t';
+    return n.toFixed(2) + ' t';
+  }
+
+  function formatTripsChart(n) {
+    var v = Number(n);
+    if (!Number.isFinite(v) || v < 0) return '0';
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+    if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+    return Math.round(v).toLocaleString();
+  }
+
+  function donutTooltipLabel(ctx) {
+    var label = ctx.label || '';
+    var t = Number(ctx.parsed) || 0;
+    var arr = ctx.chart.data.datasets[0].data;
+    var total = arr.reduce(function (a, b) { return a + b; }, 0);
+    var pct = total ? ((t / total) * 100).toFixed(1) : '0';
+    return label + ': ' + formatEmissionsTonnes(t) + ' (' + pct + '%)';
+  }
+
   function avgEmissionsKgPerTrip(avgG) {
     var g = Number(avgG);
     return Number.isFinite(g) ? Math.round(g / 1000) : null;
@@ -136,10 +176,16 @@
     if (cachedStats) applyKpiStats(cachedStats, view);
   }
 
-  function barChartOptions(compact, total, horizontal) {
+  function barChartOptions(compact, total, horizontal, chartKind) {
+    var kind = chartKind || 'emissions';
+    var valueFormatter = kind === 'trips' ? formatTripsChart : formatEmissionsTonnes;
     var valueAxis = {
       beginAtZero: true,
-      ticks: { color: '#8b9cb8', font: { size: compact ? 9 : 10 } },
+      ticks: {
+        color: '#8b9cb8',
+        font: { size: compact ? 9 : 10 },
+        callback: valueFormatter,
+      },
       grid: { color: 'rgba(148,163,184,0.08)' },
     };
     var categoryAxis = {
@@ -156,12 +202,23 @@
       indexAxis: horizontal ? 'y' : 'x',
       plugins: {
         legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function (ctx) {
+              var label = ctx.label || '';
+              var raw = horizontal ? ctx.parsed.x : ctx.parsed.y;
+              if (kind === 'trips') return label + ': ' + formatTripsChart(raw) + ' trips';
+              return label + ': ' + formatEmissionsTonnes(raw);
+            },
+          },
+        },
         datalabels: compact ? { display: false } : {
           anchor: horizontal ? 'end' : 'end',
           align: horizontal ? 'end' : 'end',
           color: '#e8eef7',
           font: { size: 9, weight: '500' },
           formatter: function (value) {
+            if (kind === 'trips') return formatTripsChart(value);
             return !total ? '' : ((value / total) * 100).toFixed(1) + '%';
           },
         },
@@ -184,7 +241,7 @@
     });
     var labelLen = compact ? 11 : 18;
     var labels = sorted.map(function (d) { return shortChartLabel(d.category, labelLen); });
-    var emissionsData = sorted.map(function (d) { return Math.round((d.total_emissions_g || 0) / 1000); });
+    var emissionsData = sorted.map(function (d) { return totalEmissionsTonnes(d.total_emissions_g); });
     var tripsData = sorted.map(function (d) { return d.trips; });
     var totalEmissions = emissionsData.reduce(function (a, b) { return a + b; }, 0);
     var totalTrips = tripsData.reduce(function (a, b) { return a + b; }, 0);
@@ -200,8 +257,8 @@
       if (chartEmissions) chartEmissions.destroy();
       chartEmissions = new Chart(ce, {
         type: 'bar',
-        data: { labels: labels, datasets: [{ label: 'kg CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
-        options: barChartOptions(compact, totalEmissions, horizontal),
+        data: { labels: labels, datasets: [{ label: 't CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
+        options: barChartOptions(compact, totalEmissions, horizontal, 'emissions'),
         plugins: [ChartDataLabels],
       });
     }
@@ -212,7 +269,7 @@
       chartTrips = new Chart(ct, {
         type: 'bar',
         data: { labels: labels, datasets: [{ label: 'Trips', data: tripsData, backgroundColor: bgColors, borderRadius: 6 }] },
-        options: barChartOptions(compact, totalTrips, horizontal),
+        options: barChartOptions(compact, totalTrips, horizontal, 'trips'),
         plugins: [ChartDataLabels],
       });
     }
@@ -222,7 +279,7 @@
       if (chartDonut) chartDonut.destroy();
       chartDonut = new Chart(cd, {
         type: 'doughnut',
-        data: { labels: labels, datasets: [{ data: sorted.map(function (d) { return d.total_emissions_g; }), backgroundColor: bgColors, borderWidth: 0 }] },
+        data: { labels: labels, datasets: [{ data: emissionsData, backgroundColor: bgColors, borderWidth: 0 }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -237,6 +294,9 @@
                 font: { size: compact ? 9 : 10 },
                 padding: compact ? 8 : 12,
               },
+            },
+            tooltip: {
+              callbacks: { label: donutTooltipLabel },
             },
             datalabels: compact ? { display: false } : {
               color: '#e8eef7',

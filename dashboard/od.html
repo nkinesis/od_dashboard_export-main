@@ -189,6 +189,27 @@
       float: right; background: none; border: 0; color: var(--muted);
       font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 0 0.25rem;
     }
+    .zone-map-label-wrap {
+      background: transparent;
+      border: none;
+      pointer-events: none;
+    }
+    .zone-map-label {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 7px;
+      background: rgba(12, 17, 25, 0.94);
+      border: 2px solid #5eead4;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      font-family: Outfit, "DM Sans", sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: #e8eef7;
+      white-space: nowrap;
+      pointer-events: none;
+      line-height: 1.1;
+    }
   </style>
 </head>
 <body data-dash-page="od-zones">
@@ -206,10 +227,10 @@
         <div class="tagline">Greater Montreal · PM23 actual OD</div>
       </div>
       <nav class="dash-nav" aria-label="OD dashboard views">
-        <a class="dash-nav-link" data-page="od-zones" href="/?view=zones">Zone maps</a>
-        <a class="dash-nav-link" data-page="od-buildings" href="/?view=buildings">Buildings</a>
-        <a class="dash-nav-link" data-page="od-flows" href="/?view=flows">Flows</a>
-        <a class="dash-nav-link" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+        <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
+        <a class="dash-nav-link" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Zone maps</span>
     </header>
@@ -259,7 +280,7 @@
         Use the map tabs to switch between rules-based and destination zone views.
       </p>
       <div class="charts-row-2">
-        <div class="card"><h3>Emissions by travel reason (kg CO₂)</h3><canvas id="chart-emissions"></canvas></div>
+        <div class="card"><h3>Emissions by travel reason (t CO₂)</h3><canvas id="chart-emissions"></canvas></div>
         <div class="card"><h3>Trips by travel reason</h3><canvas id="chart-trips"></canvas></div>
       </div>
       <div class="charts-stack">
@@ -322,8 +343,9 @@
     </section>
   </div>
 
-  <script src="assets/dashboard-nav.js?v=13"></script>
-  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script src="assets/dashboard-nav.js?v=15"></script>
+  <script src="assets/dashboard-config.js?v=2"></script>
+  <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script>
     const IS_EMBED = !!(window.DashEmbed && DashEmbed.isEmbed);
 
@@ -339,6 +361,9 @@
         const u = (new URLSearchParams(window.location.search).get('api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) { /* empty */ }
+      if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+        return DashConfig.apiBase();
+      }
       if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
       return '';
     }
@@ -380,7 +405,9 @@
     }
 
     async function fetchJson(path) {
-      const url = (API || '') + path;
+      const url = (window.DashConfig && typeof DashConfig.apiUrl === 'function')
+        ? DashConfig.apiUrl(path)
+        : ((API || '') + path);
       let r;
       try {
         r = await fetch(url);
@@ -462,6 +489,49 @@
       }
       return Math.round((Number(statsOrG) || 0) / 1000);
     }
+    function totalEmissionsTonnes(statsOrG) {
+      if (statsOrG && typeof statsOrG === 'object') {
+        const g = Number(statsOrG.total_emissions_g);
+        if (Number.isFinite(g)) return g / 1e6;
+        const t = Number(statsOrG.total_emissions_tonnes);
+        if (Number.isFinite(t)) return t;
+        return 0;
+      }
+      return (Number(statsOrG) || 0) / 1e6;
+    }
+    function formatEmissionsTonnes(t) {
+      const n = Number(t);
+      if (!Number.isFinite(n) || n <= 0) return '0 t';
+      if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' t';
+      if (n >= 100) return n.toFixed(0) + ' t';
+      if (n >= 10) return n.toFixed(1) + ' t';
+      return n.toFixed(2) + ' t';
+    }
+    function formatTripsChart(n) {
+      const v = Number(n);
+      if (!Number.isFinite(v) || v < 0) return '0';
+      if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+      if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+      return Math.round(v).toLocaleString();
+    }
+    function donutTooltipLabel(ctx) {
+      const label = ctx.label || '';
+      const t = Number(ctx.parsed) || 0;
+      const arr = ctx.chart.data.datasets[0].data;
+      const total = arr.reduce((a, b) => a + b, 0);
+      const pct = total ? ((t / total) * 100).toFixed(1) : '0';
+      return label + ': ' + formatEmissionsTonnes(t) + ' (' + pct + '%)';
+    }
+    function barEmissionsTooltipLabel(ctx) {
+      const label = ctx.label || '';
+      const t = Number(ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y : ctx.parsed) || 0;
+      return label + ': ' + formatEmissionsTonnes(t);
+    }
+    function barTripsTooltipLabel(ctx) {
+      const label = ctx.label || '';
+      const v = Number(ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y : ctx.parsed) || 0;
+      return label + ': ' + formatTripsChart(v) + ' trips';
+    }
     function avgEmissionsKgPerTrip(avgG) {
       const g = Number(avgG);
       return Number.isFinite(g) ? Math.round(g / 1000) : null;
@@ -505,7 +575,7 @@
       if (!byCategory || !byCategory.length) return;
       const sorted = [...byCategory].sort((a, b) => (b.total_emissions_g || 0) - (a.total_emissions_g || 0));
       const labels = sorted.map(d => shortChartLabel(d.category, 14));
-      const emissionsData = sorted.map(d => totalEmissionsKg(d.total_emissions_g));
+      const emissionsData = sorted.map(d => totalEmissionsTonnes(d.total_emissions_g));
       const tripsData = sorted.map(d => d.trips);
       const distanceData = sorted.map(d => d.total_distance_km);
       const totalEmissions = emissionsData.reduce((a, b) => a + b, 0);
@@ -517,17 +587,18 @@
         responsive: true, maintainAspectRatio: false, animation: anim,
         plugins: {
           legend: { display: false },
+          tooltip: { callbacks: { label: barEmissionsTooltipLabel } },
           datalabels: { color: '#e8eef7', font: { size: 9, weight: '500' } }
         },
         scales: {
           x: { ticks: { color: '#8b9cb8', maxRotation: 45, minRotation: 0, autoSkip: false }, grid: { color: 'rgba(148,163,184,0.08)' } },
-          y: { beginAtZero: true, ticks: { color: '#8b9cb8' }, grid: { color: 'rgba(148,163,184,0.08)' } }
+          y: { beginAtZero: true, ticks: { color: '#8b9cb8', callback: (v) => formatEmissionsTonnes(v) }, grid: { color: 'rgba(148,163,184,0.08)' } }
         }
       };
       if (chartEmissions) chartEmissions.destroy();
       chartEmissions = new Chart(document.getElementById('chart-emissions'), {
         type: 'bar',
-        data: { labels, datasets: [{ label: 'kg CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
+        data: { labels, datasets: [{ label: 't CO₂', data: emissionsData, backgroundColor: bgColors, borderRadius: 6 }] },
         options: { ...commonOpts, plugins: { ...commonOpts.plugins, datalabels: { ...commonOpts.plugins.datalabels, anchor: 'end', align: 'end', formatter: (v) => (!totalEmissions ? '' : ((v / totalEmissions) * 100).toFixed(1) + '%') } } },
         plugins: [ChartDataLabels]
       });
@@ -535,17 +606,37 @@
       chartTrips = new Chart(document.getElementById('chart-trips'), {
         type: 'bar',
         data: { labels, datasets: [{ label: 'Trips', data: tripsData, backgroundColor: bgColors, borderRadius: 6 }] },
-        options: { ...commonOpts, plugins: { ...commonOpts.plugins, datalabels: { ...commonOpts.plugins.datalabels, anchor: 'end', align: 'end', formatter: (v) => (!totalTrips ? '' : ((v / totalTrips) * 100).toFixed(1) + '%') } } },
+        options: {
+          ...commonOpts,
+          plugins: {
+            ...commonOpts.plugins,
+            tooltip: { callbacks: { label: barTripsTooltipLabel } },
+            datalabels: {
+              ...commonOpts.plugins.datalabels,
+              anchor: 'end',
+              align: 'end',
+              formatter: (v) => (!totalTrips ? '' : formatTripsChart(v)),
+            },
+          },
+          scales: {
+            ...commonOpts.scales,
+            y: {
+              ...commonOpts.scales.y,
+              ticks: { color: '#8b9cb8', callback: (v) => formatTripsChart(v) },
+            },
+          },
+        },
         plugins: [ChartDataLabels]
       });
       if (chartDonut) chartDonut.destroy();
       chartDonut = new Chart(document.getElementById('chart-donut'), {
         type: 'doughnut',
-        data: { labels, datasets: [{ data: sorted.map(d => d.total_emissions_g), backgroundColor: bgColors, borderWidth: 0 }] },
+        data: { labels, datasets: [{ data: emissionsData, backgroundColor: bgColors, borderWidth: 0 }] },
         options: {
           responsive: true, maintainAspectRatio: false, animation: anim, cutout: '58%',
           plugins: {
             legend: { position: 'right', labels: { color: '#8b9cb8', boxWidth: 10, font: { size: 10 } } },
+            tooltip: { callbacks: { label: donutTooltipLabel } },
             datalabels: { color: '#e8eef7', font: { size: 9 }, formatter: (value, ctx) => { const arr = ctx.chart.data.datasets[0].data; const total = arr.reduce((a, b) => a + b, 0); if (!total) return ''; return ((value / total) * 100).toFixed(1) + '%'; } }
           }
         },
@@ -578,9 +669,83 @@
       }
     }
     function zoneRadiusPx(z) { return 4 + emissionNormFromG(z.total_emissions_g) * 16; }
+    function disposeZoneLabelLayer(viewKey) {
+      const v = mapViews[viewKey];
+      if (!v || !v.zoneLabelLayer || !v.map) return;
+      v.map.removeLayer(v.zoneLabelLayer);
+      v.zoneLabelLayer = null;
+    }
+    function layerCentroidLatLng(layer) {
+      try {
+        if (layer.getBounds) return layer.getBounds().getCenter();
+        if (layer.getLatLng) return layer.getLatLng();
+      } catch (_) { /* ignore */ }
+      return null;
+    }
+    function zoneMapLabelIcon(text) {
+      const label = String(text || '');
+      const safe = label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const w = Math.max(80, Math.round(16 + label.length * 6.2));
+      const h = 22;
+      return L.divIcon({
+        className: 'zone-map-label-wrap',
+        html: '<div class="zone-map-label"><span>' + safe + '</span></div>',
+        iconSize: [w, h],
+        iconAnchor: [w / 2, h / 2],
+      });
+    }
+    function findSelectedZoneLayer(viewKey, selId) {
+      const v = mapViews[viewKey];
+      if (!v || !v.zoneLayer || !selId) return null;
+      let found = null;
+      v.zoneLayer.eachLayer((layer) => {
+        if (found) return;
+        if (layer._zoneGeoId != null && String(layer._zoneGeoId) === selId) {
+          found = layer;
+          return;
+        }
+        const feat = layer.feature;
+        const gid = feat && feat.properties && feat.properties.geo_id;
+        if (gid != null && String(gid) === selId) found = layer;
+      });
+      return found;
+    }
+    function renderSelectedZoneLabel(viewKey, payload) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map) return;
+      disposeZoneLabelLayer(viewKey);
+      const highlight = selectedZoneId != null && selectedZoneBy === v.zoneBy;
+      if (!highlight) return;
+      const selId = String(selectedZoneId);
+      const row = findZoneRow(selId, payload) || {};
+      const label = zoneCt(selId, row);
+      if (!label) return;
+      let latlng = null;
+      const layer = findSelectedZoneLayer(viewKey, selId);
+      if (layer) latlng = layerCentroidLatLng(layer);
+      if (!latlng) {
+        const z = (payload && payload.zones || []).find((zz) => String(zz.geo_id) === selId);
+        if (z && z.lat != null && z.lon != null) latlng = L.latLng(z.lat, z.lon);
+      }
+      if (!latlng) return;
+      if (!v.map.getPane('zoneLabelPane')) {
+        v.map.createPane('zoneLabelPane');
+        v.map.getPane('zoneLabelPane').style.zIndex = 650;
+      }
+      v.zoneLabelLayer = L.layerGroup({ pane: 'zoneLabelPane' }).addTo(v.map);
+      L.marker(latlng, {
+        icon: zoneMapLabelIcon(label),
+        pane: 'zoneLabelPane',
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 2000,
+      }).addTo(v.zoneLabelLayer);
+    }
     function disposeZoneLayer(viewKey) {
       const v = mapViews[viewKey];
-      if (!v || !v.zoneLayer || !v.map) return;
+      if (!v || !v.map) return;
+      disposeZoneLabelLayer(viewKey);
+      if (!v.zoneLayer) return;
       v.map.removeLayer(v.zoneLayer);
       v.zoneLayer = null;
     }
@@ -620,6 +785,7 @@
             bindZoneSelectClick(layer, p.geo_id, v.zoneBy);
           },
         }).addTo(v.map);
+        renderSelectedZoneLabel(viewKey, payload);
         return;
       }
       v.zoneLayer = L.layerGroup({ pane: 'zonePane' }).addTo(v.map);
@@ -636,8 +802,10 @@
           : ('<div style="font-size:11px"><strong>Zone ' + zid + '</strong></div>');
         m.bindTooltip(tip + '<br><span style="color:#8b9cb8">Click for zone details</span>', { direction: 'top', opacity: 1 });
         bindZoneSelectClick(m, z.geo_id, v.zoneBy);
+        m._zoneGeoId = z.geo_id;
         m.addTo(v.zoneLayer);
       });
+      renderSelectedZoneLabel(viewKey, payload);
     }
 
     let cmmZonesBoundaryGeojson = null;
@@ -652,7 +820,7 @@
         attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 20,
       }).addTo(m);
       m.fitBounds([[45.38, -74.0], [45.68, -73.35]], { animate: false });
-      return { ...spec, map: m, zoneLayer: null, heatLayer: null, boundaryLayer: null, zonesBoundaryLayer: null, payload: { zones: [], geojson: null } };
+      return { ...spec, map: m, zoneLayer: null, zoneLabelLayer: null, heatLayer: null, boundaryLayer: null, zonesBoundaryLayer: null, payload: { zones: [], geojson: null } };
     }
 
     function ensureMapViewData(key) {
@@ -663,6 +831,7 @@
         ...spec,
         map: null,
         zoneLayer: null,
+        zoneLabelLayer: null,
         heatLayer: null,
         boundaryLayer: null,
         zonesBoundaryLayer: null,
@@ -677,7 +846,7 @@
       if (v.boundaryLayer) { v.map.removeLayer(v.boundaryLayer); v.boundaryLayer = null; }
       v.boundaryLayer = L.geoJSON(montrealBoundaryGeojson, {
         interactive: false,
-        style: () => ({ color: '#14b8a6', weight: 2.5, opacity: 0.9, fillColor: '#2dd4bf', fillOpacity: 0.07 }),
+        style: () => ({ color: '#14b8a6', weight: 2, opacity: 0.9, fill: false, fillOpacity: 0 }),
       }).addTo(v.map);
     }
 
@@ -788,7 +957,8 @@
       if (zb === 'dest') params.set('attribution', 'dest');
       const api = (new URLSearchParams(window.location.search).get('api') || '').trim();
       if (api) params.set('api', api);
-      window.location.href = '/?' + params.toString();
+      const home = (window.DashConfig && DashConfig.homeUrl) ? DashConfig.homeUrl() : '/';
+      window.location.href = home + (params.toString() ? '?' + params.toString() : '');
     }
 
     function populateZonePanel(geoId, zoneBy) {

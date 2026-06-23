@@ -11,7 +11,8 @@
   <link rel="stylesheet" href="assets/dashboard-nav.css?v=14" />
   <link rel="stylesheet" href="assets/dashboard-shell.css?v=11" />
   <link rel="stylesheet" href="assets/dashboard-spa.css?v=8" />
-  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script src="assets/dashboard-config.js?v=2"></script>
+  <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script src="assets/loading-overlay.js?v=11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
@@ -96,10 +97,10 @@
         <div class="tagline">PM23 survey · CMM residents · Montreal island emissions</div>
       </div>
       <nav class="dash-nav" aria-label="OD dashboard views">
-        <a class="dash-nav-link active" data-page="od-zones" href="/?view=zones">Zone maps</a>
-        <a class="dash-nav-link" data-page="od-buildings" href="/?view=buildings">Buildings</a>
-        <a class="dash-nav-link" data-page="od-flows" href="/?view=flows">Flows</a>
-        <a class="dash-nav-link" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+        <a class="dash-nav-link active" data-page="od-zones" href="?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
+        <a class="dash-nav-link" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Loading dashboard…</span>
     </header>
@@ -112,7 +113,7 @@
         <div class="kpi"><div class="label">Avg kg / trip</div><div class="value green" id="kpi-avg">—</div></div>
       </div>
       <div class="charts-row-2">
-        <div class="card"><h3>Emissions by travel reason (kg CO₂)</h3><canvas id="chart-emissions"></canvas></div>
+        <div class="card"><h3>Emissions by travel reason (t CO₂)</h3><canvas id="chart-emissions"></canvas></div>
       </div>
       <div class="charts-stack">
         <div class="card"><h3>Emissions share · island</h3><canvas id="chart-donut"></canvas></div>
@@ -127,8 +128,8 @@
     </section>
   </div>
 
-  <script src="assets/dashboard-spa-od.js?v=12"></script>
-  <script src="assets/dashboard-nav.js?v=13"></script>
-  <script src="assets/dashboard-host-od.js?v=13"></script>
+  <script src="assets/dashboard-spa-od.js?v=14"></script>
+  <script src="assets/dashboard-nav.js?v=16"></script>
+  <script src="assets/dashboard-host-od.js?v=17"></script>
 </body>
 </html>

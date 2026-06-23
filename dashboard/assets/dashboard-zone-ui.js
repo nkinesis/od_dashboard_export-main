@@ -2,7 +2,7 @@
 
 (function (global) {
 
-  var VERSION = '20260609-16';
+  var VERSION = '20260623-21';
 
   var _zoneCodeMap = null;
   var _zoneNameMap = null;
@@ -52,11 +52,17 @@
     return t;
   }
 
-  /** Primary zone label: "Ville-Marie 123" (short name + geo_id). */
+  /** Primary zone label: "Ville-Marie - 123" (short name + geo_id). */
   function zoneLabel(geoId, meta) {
+    meta = meta || {};
+    if (meta.zone_label) return String(meta.zone_label);
+    if (meta.dest_zone_label && String(meta.dest_geo_id) === String(geoId)) {
+      return String(meta.dest_zone_label);
+    }
+    if (meta.orig_zone_label) return String(meta.orig_zone_label);
     var g = String(geoId != null ? geoId : '').trim();
     var short = zoneShortName(geoId, meta);
-    if (short && g) return short + ' ' + g;
+    if (short && g) return short + ' - ' + g;
     if (short) return short;
     if (g) return g;
     return '';
@@ -83,7 +89,7 @@
       var rest = q.slice(ZONE_SHORT_PREFIX.length + 1).trim();
       if (/^\d+$/.test(rest)) return rest;
     }
-    var nameId = q.match(/^(.+?)\s+(\d+)$/);
+    var nameId = q.match(/^(.+?)\s*(?:-\s*)?(\d+)$/);
     if (nameId) {
       var namePart = nameId[1].trim().toLowerCase();
       var idPart = nameId[2];
@@ -149,10 +155,6 @@
 
     if (!Number.isFinite(n) || n < 0) return '0';
 
-    if (n >= 1e6) return Math.round(n / 1e6) + 'M';
-
-    if (n >= 1e3) return Math.round(n / 1e3) + 'k';
-
     return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   }
@@ -165,7 +167,7 @@
 
     if (!Number.isFinite(t) || t < 0) return '— t';
 
-    if (t >= 1000) return (t / 1000).toFixed(2) + 'k t';
+    if (t >= 1000) return t.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' t';
 
     if (t >= 100) return t.toFixed(1) + ' t';
 
@@ -428,6 +430,10 @@
 
           if (f.properties.zone_short_name == null && z.zone_short_name != null) {
             f.properties.zone_short_name = z.zone_short_name;
+          }
+
+          if (f.properties.zone_label == null && z.zone_label != null) {
+            f.properties.zone_label = z.zone_label;
           }
 
         }

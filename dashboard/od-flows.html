@@ -9,13 +9,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="assets/dashboard-redirect-od.js?v=1"></script>
+  <script src="assets/dashboard-config.js?v=2"></script>
+  <script src="assets/dashboard-redirect-od.js?v=2"></script>
   <link rel="stylesheet" href="assets/loading-overlay.css?v=10" />
   <link rel="stylesheet" href="assets/dashboard-nav.css" />
   <link rel="stylesheet" href="assets/dashboard-shell.css?v=11" />
   <link rel="stylesheet" href="assets/dashboard-embed.css?v=9" />
   <script src="assets/dashboard-embed.js?v=1"></script>
-  <script src="assets/dashboard-zone-ui.js?v=16"></script>
+  <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script src="assets/loading-overlay.js?v=11"></script>
   <style>
     :root {
@@ -247,10 +248,10 @@
         <div class="tagline">Greater Montreal · PM23 actual OD</div>
       </div>
       <nav class="dash-nav" aria-label="OD dashboard views">
-        <a class="dash-nav-link" data-page="od-zones" href="/?view=zones">Zone maps</a>
-        <a class="dash-nav-link" data-page="od-buildings" href="/?view=buildings">Buildings</a>
-        <a class="dash-nav-link" data-page="od-flows" href="/?view=flows">Flows</a>
-        <a class="dash-nav-link" data-page="od-boundaries" href="/od-zones-boundary.html">Boundaries</a>
+        <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
+        <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
+        <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
+        <a class="dash-nav-link" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Incoming flows</span>
     </header>
@@ -389,7 +390,7 @@
     </section>
   </div>
 
-  <script src="assets/dashboard-nav.js?v=13"></script>
+  <script src="assets/dashboard-nav.js?v=15"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const IS_EMBED = !!(window.DashEmbed && DashEmbed.isEmbed);
@@ -452,6 +453,9 @@
     function apiBase() {
       const override = (qs.get('api') || '').trim().replace(/\/$/, '');
       if (override) return override;
+      if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+        return DashConfig.apiBase();
+      }
       if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
       return '';
     }
@@ -669,10 +673,10 @@
           interactive: false,
           style: () => ({
             color: '#14b8a6',
-            weight: 2.5,
+            weight: 2,
             opacity: 0.9,
-            fillColor: '#2dd4bf',
-            fillOpacity: 0.07,
+            fill: false,
+            fillOpacity: 0,
           }),
         }).addTo(map);
         try {
@@ -701,7 +705,12 @@
         parentSignal.addEventListener('abort', () => ctrl.abort(), { once: true });
       }
       try {
-        const r = await fetch((API || '') + path, { signal: ctrl.signal, cache: 'no-store' });
+        const r = await fetch(
+          (window.DashConfig && typeof DashConfig.apiUrl === 'function')
+            ? DashConfig.apiUrl(path)
+            : ((API || '') + path),
+          { signal: ctrl.signal, cache: 'no-store' }
+        );
         const text = await r.text();
         if (!r.ok) {
           let detail = (text || '').trim() || r.statusText;
@@ -927,7 +936,9 @@
       if (API) p.set('api', API);
       const path = IS_EMBED
         ? window.location.pathname
-        : (window.location.pathname.split('/').pop() || 'od-flows.html');
+        : ((window.DashConfig && DashConfig.dashUrl)
+          ? DashConfig.dashUrl('/od-flows.html')
+          : (window.location.pathname.split('/').pop() || 'od-flows.html'));
       history.replaceState(null, '', path + '?' + p.toString());
     }
 
