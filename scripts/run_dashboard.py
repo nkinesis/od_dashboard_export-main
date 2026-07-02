@@ -505,7 +505,7 @@ if CORS is not None:
 
 DEPLOY = {
     "url_prefix": "",
-    "api_prefix": "/",
+    "api_prefix": "/api",
     "show_boundary_button": True,
     "offline": False,
 }
@@ -784,7 +784,7 @@ def _arg_float(name: str, default):
         return default
 
 
-@app.route("/health")
+@app.route("/api/health")
 def api_health():
     up = DEPLOY["url_prefix"]
     ap = DEPLOY["api_prefix"]
@@ -844,7 +844,7 @@ def api_internal_error(err):
     )
 
 
-@app.route("/montreal_boundary.geojson")
+@app.route("/api/montreal_boundary.geojson")
 def api_montreal_boundary():
     buffer_m = _arg_float("buffer_m", None)
     conn = get_conn()
@@ -858,14 +858,14 @@ def api_montreal_boundary():
     return jsonify({"type": "FeatureCollection", "features": []})
 
 
-@app.route("/od/zone_codes")
-@app.route("/zone_codes")
+@app.route("/api/od/zone_codes")
+@app.route("/api/zone_codes")
 def api_od10_zone_codes():
     return jsonify({"zone_codes": _zone_code_index(), "zone_names": _zone_name_index()})
 
 
-@app.route("/od/zones_boundary")
-@app.route("/zones_boundary")
+@app.route("/api/od/zones_boundary")
+@app.route("/api/zones_boundary")
 def api_od10_zones_boundary():
     """CMM (or island) zone polygon outlines — boundary lines only, for map background."""
     island_only = _request_island_only(default=False)
@@ -1189,7 +1189,7 @@ def _od10_zone_map_rows(
     return {"zones": out, "geojson": geojson_fc}
 
 
-@app.route("/od/zone_map")
+@app.route("/api/od/zone_map")
 @_od10_api_errors
 def api_od10_zone_map():
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
@@ -1248,7 +1248,7 @@ def api_od10_zone_map():
         conn.close()
 
 
-@app.route("/od/zone_maps")
+@app.route("/api/od/zone_maps")
 @_od10_api_errors
 def api_od10_zone_maps():
     """Both choropleths in one response (destination + rules)."""
@@ -1310,7 +1310,7 @@ def api_od10_zone_maps():
         conn.close()
 
 
-@app.route("/od/bootstrap")
+@app.route("/api/od/bootstrap")
 @_od10_api_errors
 def api_od10_bootstrap():
     conn = get_conn()
@@ -1565,7 +1565,7 @@ def _od10_building_emission_scale_bounds(
     }
 
 
-@app.route("/od/building_emission_scale")
+@app.route("/api/od/building_emission_scale")
 def api_od10_building_emission_scale():
     """Per-building min/max emissions (g) for the buildings map colour legend."""
     building_by = _normalize_building_by(request.args.get("building_by") or "rules")
@@ -1753,7 +1753,7 @@ def _zone_building_fabric_features(
     return features, truncated
 
 
-@app.route("/od/zone_building_fabric")
+@app.route("/api/od/zone_building_fabric")
 def api_od10_zone_building_fabric():
     """All building footprint polygons in a zone (independent of emissions filter)."""
     zone_geo_id = (request.args.get("zone_geo_id") or "").strip()
@@ -1785,7 +1785,7 @@ def api_od10_zone_building_fabric():
         conn.close()
 
 
-@app.route("/od/building_map")
+@app.route("/api/od/building_map")
 def api_od10_building_map():
     """Building-level emissions from OD10 routes detail (rules or destination building)."""
     try:
@@ -2151,7 +2151,7 @@ def api_od10_building_map():
         conn.close()
 
 
-@app.route("/od/building_footprint")
+@app.route("/api/od/building_footprint")
 def api_od10_building_footprint():
     building_id = (request.args.get("building_id") or "").strip()
     if not building_id:
@@ -2170,7 +2170,7 @@ def api_od10_building_footprint():
         conn.close()
 
 
-@app.route("/od/building_detail")
+@app.route("/api/od/building_detail")
 def api_od10_building_detail():
     building_id = (request.args.get("building_id") or "").strip()
     if not building_id:
@@ -2285,20 +2285,20 @@ def api_od10_building_detail():
         conn.close()
 
 
-@app.route("/od/flows_zones")
+@app.route("/api/od/flows_zones")
 def api_od10_flows_zones():
     """Fast zone list for od-flows.html (rules or dest choropleth, no polygons)."""
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
     if zone_by not in ("rules", "dest"):
         zone_by = "rules"
     with app.test_request_context(
-        f"/od/zone_map?zone_by={zone_by}&min_kg=0&island_only=1&include_geojson=0",
+        f"/api/od/zone_map?zone_by={zone_by}&min_kg=0&island_only=1&include_geojson=0",
         method="GET",
     ):
         return api_od10_zone_map()
 
 
-@app.route("/od/zone_incoming_flow")
+@app.route("/api/od/zone_incoming_flow")
 def api_od10_zone_incoming_flow():
     dest_id = (request.args.get("dest_geo_id", "") or "").strip()
     if not dest_id:
@@ -2410,7 +2410,7 @@ def api_od10_zone_incoming_flow():
         conn.close()
 
 
-@app.route("/od/zone_incoming_flows_all")
+@app.route("/api/od/zone_incoming_flows_all")
 def api_od10_zone_incoming_flows_all():
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
     if zone_by == "meeting":
