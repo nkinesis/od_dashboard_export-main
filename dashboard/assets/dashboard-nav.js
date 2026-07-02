@@ -59,8 +59,8 @@
     var params = new URLSearchParams();
     try {
       var current = new URLSearchParams(window.location.search);
-      var api = (current.get('od-dashboard-api') || '').trim();
-      if (api) params.set('od-dashboard-api', api.replace(/\/$/, ''));
+      var api = (current.get('api') || '').trim();
+      if (api) params.set('api', api.replace(/\/$/, ''));
       var attr = readAttributionFromUrl();
       if (!attr) {
         try {
@@ -80,7 +80,7 @@
 
   function apiQuerySuffix() {
     try {
-      var api = (new URLSearchParams(window.location.search).get('od-dashboard-api') || '').trim();
+      var api = (new URLSearchParams(window.location.search).get('api') || '').trim();
       return api ? ('?api=' + encodeURIComponent(api.replace(/\/$/, ''))) : '';
     } catch (_) {
       return '';
@@ -335,7 +335,7 @@
       }
       return;
     }
-    var apiBase = '/od-dashboard-api';
+    var apiBase = '/api';
     try {
       if (window.DashConfig && typeof DashConfig.apiBase === 'function') apiBase = DashConfig.apiBase();
       else if (window.DashConfig && DashConfig.apiPrefix) apiBase = DashConfig.apiPrefix;

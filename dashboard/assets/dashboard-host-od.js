@@ -7,11 +7,14 @@
   var cachedByCategory = null;
   var activeView = 'zones';
 
-   function apiBase() {
+  function apiBase() {
     try {
-      var u = (new URLSearchParams(window.location.search).get('od-dashboard-api') || '').trim();
+      var u = (new URLSearchParams(window.location.search).get('api') || '').trim();
       if (u) return u.replace(/\/$/, '');
     } catch (_) { /* empty */ }
+    if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
+      return DashConfig.apiBase();
+    }
     if (window.location.protocol === 'file:') return 'http://127.0.0.1:5051';
     return '';
   }
@@ -320,7 +323,7 @@
   }
 
   function loadHostSidebar() {
-    return fetchJson('/od-dashboard-api/od/bootstrap', 120000).then(function (boot) {
+    return fetchJson('/api/od/bootstrap', 120000).then(function (boot) {
       var stats = (boot && boot.stats_island_eligible)
         || (boot && (boot.stats_rules || boot.stats))
         || null;
