@@ -505,7 +505,7 @@ if CORS is not None:
 
 DEPLOY = {
     "url_prefix": "",
-    "api_prefix": "",
+    "api_prefix": "/od-dashboard-api",
     "show_boundary_button": True,
     "offline": False,
 }
@@ -528,9 +528,9 @@ def _norm_deploy_path(raw: str | None) -> str:
 
 
 def _is_api_request(path: str) -> bool:
-    ap = DEPLOY["api_prefix"] or ""
+    ap = DEPLOY["api_prefix"] or "/od-dashboard-api"
     up = DEPLOY["url_prefix"] or ""
-    prefixes = [ap + "/", ap, "/", ""]
+    prefixes = [ap + "/", ap, "/od-dashboard-api/", "/od-dashboard-api"]
     if up:
         prefixes.extend([up + ap + "/", up + ap])
     for prefix in prefixes:
@@ -540,7 +540,7 @@ def _is_api_request(path: str) -> bool:
 
 
 def _register_route_aliases(old_prefix: str, new_prefix: str) -> None:
-    old_prefix = _norm_deploy_path(old_prefix) or ""
+    old_prefix = _norm_deploy_path(old_prefix) or "/od-dashboard-api"
     new_prefix = _norm_deploy_path(new_prefix)
     if not new_prefix or new_prefix == old_prefix:
         return
@@ -590,7 +590,7 @@ def configure_deployment(
     global DEPLOY, _DEPLOY_CONFIGURED
     DEPLOY = {
         "url_prefix": _norm_deploy_path(url_prefix if url_prefix is not None else DEPLOY["url_prefix"]),
-        "api_prefix": _norm_deploy_path(api_prefix if api_prefix is not None else DEPLOY["api_prefix"]) or "",
+        "api_prefix": _norm_deploy_path(api_prefix if api_prefix is not None else DEPLOY["api_prefix"]) or "/od-dashboard-api",
         "show_boundary_button": (
             DEPLOY["show_boundary_button"] if show_boundary_button is None else bool(show_boundary_button)
         ),
@@ -598,7 +598,7 @@ def configure_deployment(
     }
     if _DEPLOY_CONFIGURED:
         return
-    _register_route_aliases("", DEPLOY["api_prefix"])
+    _register_route_aliases("/od-dashboard-api", DEPLOY["api_prefix"])
     _duplicate_url_prefixed_routes()
     _DEPLOY_CONFIGURED = True
 
@@ -824,7 +824,7 @@ def api_health():
         "deploy": {
             "url_prefix": up,
             "api_prefix": ap,
-            "api_base": f"{up}{ap}" if up or ap else "",
+            "api_base": f"{up}{ap}" if up or ap else "/od-dashboard-api",
             "show_boundary_button": DEPLOY["show_boundary_button"],
             "offline": DEPLOY["offline"],
         },
@@ -2613,7 +2613,7 @@ def api_od10_zone_incoming_flows_all():
 def _deploy_cfg_dict() -> dict:
     up = DEPLOY["url_prefix"]
     ap = DEPLOY["api_prefix"]
-    api_base = f"{up}{ap}" if up or ap else ""
+    api_base = f"{up}{ap}" if up or ap else "/od-dashboard-api"
     return {
         "urlPrefix": up,
         "apiPrefix": ap,
@@ -2832,7 +2832,7 @@ if __name__ == "__main__":
     )
     ap.add_argument(
         "--api-prefix",
-        default=os.environ.get("DASH_API_PREFIX", ""),
+        default=os.environ.get("DASH_API_PREFIX", "/od-dashboard-api"),
         help="API route prefix (default: /api; use /od-dashboard-api on shared hosts)",
     )
     ap.add_argument(
