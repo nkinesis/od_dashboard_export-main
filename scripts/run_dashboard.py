@@ -505,7 +505,7 @@ if CORS is not None:
 
 DEPLOY = {
     "url_prefix": "",
-    "api_prefix": "/api",
+    "api_prefix": "/",
     "show_boundary_button": True,
     "offline": False,
 }
