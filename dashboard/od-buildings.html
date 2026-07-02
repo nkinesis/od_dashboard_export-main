@@ -901,8 +901,8 @@
       const id = encodeURIComponent(String(buildingId));
       const by = encodeURIComponent(buildingBy || 'rules');
       const paths = [
-        '/od-dashboard-api/od/building_footprint?building_id=' + id,
-        '/od-dashboard-api/od/building_detail?building_id=' + id + '&building_by=' + by,
+        '/od/building_footprint?building_id=' + id,
+        '/od/building_detail?building_id=' + id + '&building_by=' + by,
       ];
       for (let i = 0; i < paths.length; i++) {
         try {
@@ -932,7 +932,7 @@
 
     async function checkDashboardServerCapabilities() {
       try {
-        await fetchJson('/od-dashboard-api/health');
+        await fetchJson('/health');
         return true;
       } catch (_) {
         return false;
@@ -1163,7 +1163,7 @@
         }
         try {
           detail = await fetchJson(
-            '/od-dashboard-api/od/building_detail?building_id=' + encodeURIComponent(selectedBuildingId)
+            '/od/building_detail?building_id=' + encodeURIComponent(selectedBuildingId)
             + '&building_by=' + encodeURIComponent(by)
           );
         } catch (err) {
@@ -1588,7 +1588,7 @@
       const fromBoot = buildingScaleFromBoot(by);
       if (fromBoot) applyBuildingScaleBounds(fromBoot);
       try {
-        const raw = await fetchJson('/od-dashboard-api/od/building_emission_scale?building_by=' + encodeURIComponent(by));
+        const raw = await fetchJson('/od/building_emission_scale?building_by=' + encodeURIComponent(by));
         applyBuildingScaleBounds(raw);
       } catch (err) {
         if (!fromBoot) console.warn('building emission scale:', err);
@@ -3083,7 +3083,7 @@
     async function loadCmmZoneBoundaries() {
       try {
         if (!cmmZonesBoundaryGeojson) {
-          const raw = await fetchJson('/od-dashboard-api/od/zones_boundary?island_only=1');
+          const raw = await fetchJson('/od/zones_boundary?island_only=1');
           cmmZonesBoundaryGeojson = raw && raw.geojson;
         }
         applyCmmZoneBoundariesToMaps(cmmZonesBoundaryGeojson);
@@ -3109,7 +3109,7 @@
 
     async function loadMontrealBoundary() {
       try {
-        const gj = await fetchJson('/od-dashboard-api/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
+        const gj = await fetchJson('/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
         if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) return;
         cachedBoundaryGj = gj;
         Object.keys(mapViews).forEach(applyBoundaryToView);
@@ -3210,15 +3210,15 @@
       const q = new URLSearchParams();
       q.set('zone_geo_id', String(zoneGeoId));
       q.set('limit', '50000');
-      return fetchJson('/od-dashboard-api/od/zone_building_fabric?' + q.toString());
+      return fetchJson('/od/zone_building_fabric?' + q.toString());
     }
 
     async function loadZones(minKg, maxKg, zoneBy) {
-      return fetchJson('/od-dashboard-api/od/zone_map?' + buildZoneQuery(minKg, maxKg, zoneBy));
+      return fetchJson('/od/zone_map?' + buildZoneQuery(minKg, maxKg, zoneBy));
     }
 
     async function loadBuildings(minKg, maxKg, buildingBy, zoneGeoId) {
-      return fetchJson('/od-dashboard-api/od/building_map?' + buildBuildingQuery(minKg, maxKg, buildingBy, zoneGeoId));
+      return fetchJson('/od/building_map?' + buildBuildingQuery(minKg, maxKg, buildingBy, zoneGeoId));
     }
 
     function renderPresetChips() {
@@ -3418,12 +3418,12 @@
       finishEmbedMapPaint();
       if (!IS_EMBED) setKpiLoading(true);
       const motifLimit = (new URLSearchParams(window.location.search).get('motif_limit') || '24').trim() || '24';
-      const bootUrl = '/od-dashboard-api/od/bootstrap';
+      const bootUrl = '/od/bootstrap';
       const bootPromise = fetchJson(bootUrl).catch(err => {
         console.error('bootstrap:', err);
         return null;
       });
-      const zoneCodesPromise = fetchJson('/od-dashboard-api/zone_codes').catch(() => null);
+      const zoneCodesPromise = fetchJson('/zone_codes').catch(() => null);
       const scalePromise = loadBuildingEmissionScale(activeBuildingBy());
       const zonesPromise = refreshZones().catch(err => {
         console.error('zone maps:', err);
