@@ -3108,7 +3108,7 @@
 
     async function loadMontrealBoundary() {
       try {
-        const gj = await fetchJson('/od-dashboard-api/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
+        const gj = await fetchJson('/api/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
         if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) return;
         cachedBoundaryGj = gj;
         Object.keys(mapViews).forEach(applyBoundaryToView);
