@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PopGen · Actual OD survey (PM23) · Buildings</title>
+    <base href="/montreal-traffic-emissions-dashboard/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
@@ -564,8 +565,8 @@
         const u = (new URLSearchParams(window.location.search).get('api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) { /* empty */ }
-      if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
-        return DashConfig.apiBase();
+      if (window.DashConfig && DashConfig.apiBase) {
+          return typeof DashConfig.apiBase === 'function' ? DashConfig.apiBase() : DashConfig.apiBase;
       }
       if (window.location.protocol === 'file:')
         return 'http://127.0.0.1:5051';
