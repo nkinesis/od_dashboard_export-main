@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PopGen · Actual OD survey (PM23) · Buildings</title>
+    <base href="/montreal-traffic-emissions-dashboard/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
@@ -463,7 +464,8 @@
         <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
         <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
         <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
-        <a class="dash-nav-link dash-nav-boundaries" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
+        <!--- <a class="dash-nav-link dash-nav-boundaries" data-page="od-boundaries"
+        href="od-zones-boundary.html">Boundaries</a> -->
       </nav>
       <span class="pill" id="liveHint">Click a zone to explore its buildings</span>
     </header>
@@ -561,7 +563,7 @@
     /** Same host as this page when served by Flask; override with ?api=http://127.0.0.1:5055 */
     function apiBase() {
       try {
-        const u = (new URLSearchParams(window.location.search).get('api') || '').trim();
+        const u = (new URLSearchParams(window.location.search).get('od-dashboard-api') || '').trim();
         if (u) return u.replace(/\/$/, '');
       } catch (_) { /* empty */ }
       if (window.DashConfig && typeof DashConfig.apiBase === 'function') {
@@ -899,8 +901,8 @@
       const id = encodeURIComponent(String(buildingId));
       const by = encodeURIComponent(buildingBy || 'rules');
       const paths = [
-        '/api/od/building_footprint?building_id=' + id,
-        '/api/od/building_detail?building_id=' + id + '&building_by=' + by,
+        '/od-dashboard-api/od/building_footprint?building_id=' + id,
+        '/od-dashboard-api/od/building_detail?building_id=' + id + '&building_by=' + by,
       ];
       for (let i = 0; i < paths.length; i++) {
         try {
@@ -930,7 +932,7 @@
 
     async function checkDashboardServerCapabilities() {
       try {
-        await fetchJson('/api/health');
+        await fetchJson('/od-dashboard-api/health');
         return true;
       } catch (_) {
         return false;
@@ -1161,7 +1163,7 @@
         }
         try {
           detail = await fetchJson(
-            '/api/od/building_detail?building_id=' + encodeURIComponent(selectedBuildingId)
+            '/od-dashboard-api/od/building_detail?building_id=' + encodeURIComponent(selectedBuildingId)
             + '&building_by=' + encodeURIComponent(by)
           );
         } catch (err) {
@@ -1586,7 +1588,7 @@
       const fromBoot = buildingScaleFromBoot(by);
       if (fromBoot) applyBuildingScaleBounds(fromBoot);
       try {
-        const raw = await fetchJson('/api/od/building_emission_scale?building_by=' + encodeURIComponent(by));
+        const raw = await fetchJson('/od-dashboard-api/od/building_emission_scale?building_by=' + encodeURIComponent(by));
         applyBuildingScaleBounds(raw);
       } catch (err) {
         if (!fromBoot) console.warn('building emission scale:', err);
@@ -2165,7 +2167,7 @@
 
     function filterBuildingsToSelectedZone(buildings, viewKey) {
       if (!selectedGeoId || !buildings || !buildings.length) return buildings || [];
-      // API rows from /api/od/building_map?zone_geo_id= are already zone-scoped.
+      // API rows from /od-dashboard-api/od/building_map?zone_geo_id= are already zone-scoped.
       const zid = String(selectedGeoId);
       const apiScoped = buildings.every(function (b) {
         return b && (b.zone_geo_id == null || String(b.zone_geo_id) === zid);
@@ -3081,7 +3083,7 @@
     async function loadCmmZoneBoundaries() {
       try {
         if (!cmmZonesBoundaryGeojson) {
-          const raw = await fetchJson('/api/od/zones_boundary?island_only=1');
+          const raw = await fetchJson('/od-dashboard-api/od/zones_boundary?island_only=1');
           cmmZonesBoundaryGeojson = raw && raw.geojson;
         }
         applyCmmZoneBoundariesToMaps(cmmZonesBoundaryGeojson);
@@ -3107,7 +3109,7 @@
 
     async function loadMontrealBoundary() {
       try {
-        const gj = await fetchJson('/api/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
+        const gj = await fetchJson('/od-dashboard-api/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
         if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) return;
         cachedBoundaryGj = gj;
         Object.keys(mapViews).forEach(applyBoundaryToView);
@@ -3208,15 +3210,15 @@
       const q = new URLSearchParams();
       q.set('zone_geo_id', String(zoneGeoId));
       q.set('limit', '50000');
-      return fetchJson('/api/od/zone_building_fabric?' + q.toString());
+      return fetchJson('/od-dashboard-api/od/zone_building_fabric?' + q.toString());
     }
 
     async function loadZones(minKg, maxKg, zoneBy) {
-      return fetchJson('/api/od/zone_map?' + buildZoneQuery(minKg, maxKg, zoneBy));
+      return fetchJson('/od-dashboard-api/od/zone_map?' + buildZoneQuery(minKg, maxKg, zoneBy));
     }
 
     async function loadBuildings(minKg, maxKg, buildingBy, zoneGeoId) {
-      return fetchJson('/api/od/building_map?' + buildBuildingQuery(minKg, maxKg, buildingBy, zoneGeoId));
+      return fetchJson('/od-dashboard-api/od/building_map?' + buildBuildingQuery(minKg, maxKg, buildingBy, zoneGeoId));
     }
 
     function renderPresetChips() {
@@ -3416,12 +3418,12 @@
       finishEmbedMapPaint();
       if (!IS_EMBED) setKpiLoading(true);
       const motifLimit = (new URLSearchParams(window.location.search).get('motif_limit') || '24').trim() || '24';
-      const bootUrl = '/api/od/bootstrap';
+      const bootUrl = '/od-dashboard-api/od/bootstrap';
       const bootPromise = fetchJson(bootUrl).catch(err => {
         console.error('bootstrap:', err);
         return null;
       });
-      const zoneCodesPromise = fetchJson('/api/zone_codes').catch(() => null);
+      const zoneCodesPromise = fetchJson('/od-dashboard-api/zone_codes').catch(() => null);
       const scalePromise = loadBuildingEmissionScale(activeBuildingBy());
       const zonesPromise = refreshZones().catch(err => {
         console.error('zone maps:', err);
