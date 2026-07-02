@@ -340,7 +340,7 @@
       if (window.DashConfig && typeof DashConfig.apiBase === 'function') apiBase = DashConfig.apiBase();
       else if (window.DashConfig && DashConfig.apiPrefix) apiBase = DashConfig.apiPrefix;
     } catch (_) { /* empty */ }
-    fetch(apiBase.replace(/\/$/, '') + '/health')
+    fetch(apiBase + '/health')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j || !j.deploy || j.deploy.show_boundary_button !== false) return;
