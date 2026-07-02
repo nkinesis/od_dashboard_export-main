@@ -1712,13 +1712,13 @@ def _cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    if request.path.startswith("/od-dashboard-api/"):
+    if request.path.startswith("/"):
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         resp.headers["Pragma"] = "no-cache"
     return resp
 
 
-@app.route("/od-dashboard-api/health")
+@app.route("/health")
 def api_health():
     dist_probe: dict = {}
     try:
@@ -1779,7 +1779,7 @@ def api_health():
     )
 
 
-@app.route("/od-dashboard-api/montreal_boundary.geojson")
+@app.route("/montreal_boundary.geojson")
 def api_montreal_boundary():
     buffer_m = request.args.get("buffer_m")
     buf = None
@@ -1799,7 +1799,7 @@ def api_montreal_boundary():
     return jsonify({"type": "FeatureCollection", "features": []})
 
 
-@app.route("/od-dashboard-api/zones_boundary")
+@app.route("/zones_boundary")
 def api_zones_boundary():
     """Zone polygon outlines for the CMM boundary reference map (no emissions join)."""
     island_only = _request_island_only(default=False)
@@ -2249,7 +2249,7 @@ def _fetch_purpose_motif_payload(cur, t: dict, lim: int) -> dict:
     }
 
 
-@app.route("/od-dashboard-api/stats")
+@app.route("/stats")
 def api_stats():
     t = _tables_from_request()
     if isinstance(t, tuple):
@@ -2263,7 +2263,7 @@ def api_stats():
         conn.close()
 
 
-@app.route("/od-dashboard-api/by_category")
+@app.route("/by_category")
 def api_by_category():
     t = _tables_from_request()
     if isinstance(t, tuple):
@@ -2277,7 +2277,7 @@ def api_by_category():
         conn.close()
 
 
-@app.route("/od-dashboard-api/by_purpose_motif")
+@app.route("/by_purpose_motif")
 def api_by_purpose_motif():
     """Aggregate emissions (and distance) by enriched OD motif; LEFT JOIN enrichment on route leg key."""
     t = _tables_from_request()
@@ -2297,12 +2297,12 @@ def api_by_purpose_motif():
         conn.close()
 
 
-@app.route("/od-dashboard-api/zone_codes")
+@app.route("/zone_codes")
 def api_zone_codes():
     return jsonify({"zone_codes": _zone_code_index(), "zone_names": _zone_name_index()})
 
 
-@app.route("/od-dashboard-api/bootstrap")
+@app.route("/bootstrap")
 def api_bootstrap():
     """Single round-trip: stats + by_category + by_purpose_motif (one DB connection)."""
     t = _tables_from_request()
@@ -2334,7 +2334,7 @@ def api_bootstrap():
         conn.close()
 
 
-@app.route("/od-dashboard-api/zone_map")
+@app.route("/zone_map")
 def api_zone_map():
     t = _tables_from_request()
     if isinstance(t, tuple):
@@ -2736,7 +2736,7 @@ def api_zone_map():
     )
 
 
-@app.route("/od-dashboard-api/building_map")
+@app.route("/building_map")
 def api_building_map():
     """Point emissions heatmap data aggregated by building (rules or destination)."""
     t = _tables_from_request()
@@ -3176,7 +3176,7 @@ def _geom_json_to_feature(geom_json: str | None, props: dict) -> dict | None:
     return {"type": "Feature", "geometry": geometry, "properties": props}
 
 
-@app.route("/od-dashboard-api/building_footprint")
+@app.route("/building_footprint")
 def api_building_footprint():
     """Building footprint polygon only (for map highlight)."""
     building_id = (request.args.get("building_id") or "").strip()
@@ -3200,7 +3200,7 @@ def api_building_footprint():
     return jsonify({"building_id": row[0], "geojson": feature})
 
 
-@app.route("/od-dashboard-api/building_detail")
+@app.route("/building_detail")
 def api_building_detail():
     """Footprint geometry + metadata for one building (map click / highlight)."""
     building_id = (request.args.get("building_id") or "").strip()
@@ -3286,7 +3286,7 @@ def api_building_detail():
     return jsonify({"building": building, "geojson": geojson_fc})
 
 
-@app.route("/od-dashboard-api/od_flows")
+@app.route("/od_flows")
 def api_od_flows():
     try:
         limit = int(request.args.get("limit", "150") or "150")
@@ -3600,7 +3600,7 @@ def api_od_flows():
     )
 
 
-@app.route("/od-dashboard-api/zone_incoming_flow")
+@app.route("/zone_incoming_flow")
 def api_zone_incoming_flow():
     try:
         return _api_zone_incoming_flow_impl()
@@ -4126,7 +4126,7 @@ def _api_zone_incoming_flow_impl():
     )
 
 
-@app.route("/od-dashboard-api/zone_incoming_flows_all")
+@app.route("/zone_incoming_flows_all")
 def api_zone_incoming_flows_all():
     """Precompute top-N incoming flows for *every* destination zone in one query.
 
@@ -4484,12 +4484,12 @@ def _response_json(resp):
     return {}, None, 200
 
 
-@app.route("/od-dashboard-api/flows_zones")
+@app.route("/flows_zones")
 def api_flows_zones():
     """Fast zone list for flows.html (no GeoJSON polygons)."""
     zone_by = _normalize_zone_by(request.args.get("zone_by") or "rules")
     with app.test_request_context(
-        f"/od-dashboard-api/zone_map?zone_by={zone_by}&min_kg=0&island_only=1&include_geojson=0",
+        f"/zone_map?zone_by={zone_by}&min_kg=0&island_only=1&include_geojson=0",
         method="GET",
     ):
         return api_zone_map()
@@ -4528,7 +4528,7 @@ def zones_boundary_page():
     return "<p>zones-boundary.html not found.</p>", 404
 
 
-@app.route("/od-dashboard-api/flows_bootstrap")
+@app.route("/flows_bootstrap")
 def api_flows_bootstrap():
     """One round-trip for flows page: rules zone_map + optional incoming flows."""
     dest_id = (request.args.get("dest_geo_id", "") or "").strip()
@@ -4544,7 +4544,7 @@ def api_flows_bootstrap():
             if part.startswith("api="):
                 zone_q += "&" + part
                 break
-    with app.test_request_context("/od-dashboard-api/zone_map?" + zone_q, method="GET"):
+    with app.test_request_context("/zone_map?" + zone_q, method="GET"):
         zone_resp = api_zone_map()
     zone_data, zone_err, zone_code = _response_json(zone_resp)
     if zone_err:
@@ -4557,7 +4557,7 @@ def api_flows_bootstrap():
                 if part.startswith("api="):
                     inc_q += "&" + part
                     break
-        with app.test_request_context("/od-dashboard-api/zone_incoming_flow?" + inc_q, method="GET"):
+        with app.test_request_context("/zone_incoming_flow?" + inc_q, method="GET"):
             inc_resp = api_zone_incoming_flow()
         incoming, inc_err, inc_code = _response_json(inc_resp)
         if inc_err:
@@ -4567,7 +4567,7 @@ def api_flows_bootstrap():
     return jsonify({"zone_map": zone_data or {}, "incoming": incoming})
 
 
-@app.route("/od-dashboard-api/bounds")
+@app.route("/bounds")
 def api_bounds():
     extent = (request.args.get("extent") or "island").strip().lower()
     if extent in ("cmm", "full", "all"):
