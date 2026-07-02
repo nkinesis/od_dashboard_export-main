@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import traceback
 from functools import wraps
@@ -64,6 +65,9 @@ from dashboard_server import (  # noqa: E402
     _zone_label_for,
     _zone_short_name_for,
     _montreal_island_geometry_geojson_for_postgis,
+    _montreal_boundary_geojson_fc,
+    _zones_geom_table,
+    ensure_zones_geom_compat,
     _normalize_building_by,
     _parse_building_grid_cell_deg,
     _request_island_only,
@@ -102,6 +106,44 @@ def _apply_db_cli(
     if db_schema is not None:
         SCHEMA = db_schema.strip()
         _dashboard_server.SCHEMA = SCHEMA
+    _dashboard_server.DB_PARAMS.clear()
+    _dashboard_server.DB_PARAMS.update(DB_PARAMS)
+
+
+def _load_deploy_env(path: Path, *, override: bool = False) -> None:
+    """Load KEY=VALUE lines into os.environ (for local deploy.env / .env files)."""
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if not key or not val:
+            continue
+        if override or key not in os.environ:
+            os.environ[key] = val
+
+
+def _load_default_deploy_env(bundle_root: Path | None = None) -> None:
+    roots: list[Path] = []
+    if bundle_root:
+        roots.append(bundle_root)
+    roots.append(Path(__file__).resolve().parent.parent)
+    seen: set[Path] = set()
+    for root in roots:
+        root = root.resolve()
+        if root in seen:
+            continue
+        seen.add(root)
+        for name in ("deploy.env", ".env"):
+            _load_deploy_env(root / name)
 
 
 def _data_dir() -> Path:
@@ -265,11 +307,16 @@ def _od10_zero_building_metrics(props: dict) -> dict:
 
 
 def _od10_building_panel_row(row: dict) -> dict:
-    """Building maps/panels: primary trips = survey leg count (non-weighted)."""
+    """Building maps/panels: prefer expanded trips when capacity-split."""
     out = _od10_zero_building_metrics(row)
     legs = int(out.get("trips_legs") or 0)
     weighted = float(out.get("trips_weighted") or 0)
-    if out.get("trips_assigned_weighted") is None and legs > 0:
+    if out.get("trips_is_capacity_share") or out.get("trips_is_leg_d_fexp_split"):
+        out["trips"] = legs
+        out["trips_legs"] = legs
+        if weighted > 0:
+            out["trips_display"] = weighted
+    if out.get("trips_assigned_weighted") is None and weighted > 0:
         out["trips_assigned_weighted"] = weighted
     return out
 
@@ -460,6 +507,7 @@ DEPLOY = {
     "url_prefix": "",
     "api_prefix": "/api",
     "show_boundary_button": True,
+    "offline": False,
 }
 _DEPLOY_CONFIGURED = False
 
@@ -536,6 +584,7 @@ def configure_deployment(
     url_prefix: str | None = None,
     api_prefix: str | None = None,
     show_boundary_button: bool | None = None,
+    offline: bool | None = None,
 ) -> None:
     """Apply URL/API mount prefixes and optional UI flags (safe to call once at startup)."""
     global DEPLOY, _DEPLOY_CONFIGURED
@@ -545,6 +594,7 @@ def configure_deployment(
         "show_boundary_button": (
             DEPLOY["show_boundary_button"] if show_boundary_button is None else bool(show_boundary_button)
         ),
+        "offline": DEPLOY["offline"] if offline is None else bool(offline),
     }
     if _DEPLOY_CONFIGURED:
         return
@@ -566,6 +616,40 @@ def _od10_flow_metric_cols(zone_by: str) -> tuple[str, str, str]:
 
 def _od10_building_emissions_table(cur) -> str | None:
     return _resolve_od10_table(cur, OD10_BUILDING_EMISSIONS_CANDIDATES)
+
+
+def _od10_building_db_stats(cur) -> dict | None:
+    """Quick fingerprint so deploys can verify new vs old building_emissions dump."""
+    btab = _od10_building_emissions_table(cur)
+    if not btab:
+        return None
+    has_cap = _column_exists(cur, btab, "trips_is_capacity_share")
+    has_ref = _column_exists(cur, btab, "refreshed_at")
+    cap_sql = "BOOL_OR(trips_is_capacity_share)" if has_cap else "NULL"
+    ref_sql = "MAX(refreshed_at)" if has_ref else "NULL"
+    cur.execute(
+        f"""
+        SELECT COUNT(*)::bigint,
+               COALESCE(SUM(trips_weighted_rules), 0)::double precision,
+               COALESCE(SUM(trips_weighted_dest), 0)::double precision,
+               {cap_sql},
+               {ref_sql}
+        FROM {SCHEMA}.{btab}
+        """
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    n, rules_w, dest_w, cap_any, refreshed_at = row
+    return {
+        "table": btab,
+        "rows": int(n or 0),
+        "trips_weighted_rules_total": float(rules_w or 0),
+        "trips_weighted_dest_total": float(dest_w or 0),
+        "capacity_alloc": bool(cap_any) if cap_any is not None else None,
+        "refreshed_at": refreshed_at.isoformat() if refreshed_at is not None else None,
+        "expected_rows_approx": 924757,
+    }
 
 
 def _od10_is_unified_building_table(cur, btab: str) -> bool:
@@ -700,24 +784,49 @@ def _arg_float(name: str, default):
         return default
 
 
-@app.route("/od-dashboard-api/health")
+@app.route("/api/health")
 def api_health():
     up = DEPLOY["url_prefix"]
     ap = DEPLOY["api_prefix"]
+    building_stats = None
+    zone_label_stats = None
+    db_ok = False
+    try:
+        conn = get_conn()
+        try:
+            cur = conn.cursor()
+            building_stats = _od10_building_db_stats(cur)
+            zone_label_stats = {
+                "zones_csv": str(_dashboard_server._zones_csv_path()),
+                "zones_csv_rows": len(_zone_code_index()),
+                "geo_zone_sp23_csv": str(_dashboard_server._geo_sp23_csv_path()),
+                "geo_zone_sp23_exists": _dashboard_server._geo_sp23_csv_path().exists(),
+                "zone_names_loaded": len(_zone_name_index()),
+                "sample_label_562": _zone_label_for("562"),
+            }
+            db_ok = True
+            cur.close()
+        finally:
+            conn.close()
+    except Exception as exc:
+        building_stats = {"error": str(exc)}
     return jsonify({
-        "ok": True,
+        "ok": db_ok,
         "service": "popgen-od-dashboard",
         "metrics_mode": "weighted" if _od10_metrics_weighted() else "legs",
         "schema": SCHEMA,
         "dbname": DB_PARAMS.get("dbname"),
         "db_host": DB_PARAMS.get("host"),
         "db_port": DB_PARAMS.get("port"),
-        "api_build": "2026-06-17-public-schema",
+        "api_build": "2026-06-23-capacity-buildings",
+        "building_emissions": building_stats,
+        "zone_labels": zone_label_stats,
         "deploy": {
             "url_prefix": up,
             "api_prefix": ap,
             "api_base": f"{up}{ap}" if up or ap else "/api",
             "show_boundary_button": DEPLOY["show_boundary_button"],
+            "offline": DEPLOY["offline"],
         },
     })
 
@@ -735,23 +844,28 @@ def api_internal_error(err):
     )
 
 
-@app.route("/od-dashboard-api/montreal_boundary.geojson")
+@app.route("/api/montreal_boundary.geojson")
 def api_montreal_boundary():
-    for fname in ("mtl_boundary_file.geojson", "mtl_boundary_file_padded.geojson"):
-        path = _data_dir() / fname
-        if path.is_file():
-            return send_from_directory(_data_dir(), fname, mimetype="application/geo+json")
+    buffer_m = _arg_float("buffer_m", None)
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        fc = _montreal_boundary_geojson_fc(cur, buffer_m=buffer_m)
+    finally:
+        conn.close()
+    if fc:
+        return jsonify(fc)
     return jsonify({"type": "FeatureCollection", "features": []})
 
 
-@app.route("/od-dashboard-api/od/zone_codes")
-@app.route("/od-dashboard-api/zone_codes")
+@app.route("/api/od/zone_codes")
+@app.route("/api/zone_codes")
 def api_od10_zone_codes():
     return jsonify({"zone_codes": _zone_code_index(), "zone_names": _zone_name_index()})
 
 
-@app.route("/od-dashboard-api/od/zones_boundary")
-@app.route("/od-dashboard-api/zones_boundary")
+@app.route("/api/od/zones_boundary")
+@app.route("/api/zones_boundary")
 def api_od10_zones_boundary():
     """CMM (or island) zone polygon outlines — boundary lines only, for map background."""
     island_only = _request_island_only(default=False)
@@ -1000,7 +1114,7 @@ def _od10_zone_map_rows(
         params.append(clip_gj)
         island_pred = (
             "\n              AND EXISTS (SELECT 1 FROM island ix WHERE ST_Intersects("
-            "ix.ig, ST_Centroid(ST_MakeValid(ST_Force2D(g.geom::geometry)))))"
+            "ix.ig, ST_MakeValid(ST_Force2D(g.geom::geometry))))"
         )
     pos_lat = zone_point_on_surface_lat_sql("g")
     pos_lon = zone_point_on_surface_lon_sql("g")
@@ -1008,7 +1122,7 @@ def _od10_zone_map_rows(
     if anchor_tab:
         map_lat = f"COALESCE(za.map_lat, {pos_lat})"
         map_lon = f"COALESCE(za.map_lon, {pos_lon})"
-        join_anchor = f"LEFT JOIN {SCHEMA}.{anchor_tab} za ON za.geo_id = z.geo_id::text"
+        join_anchor = f"LEFT JOIN {SCHEMA}.{anchor_tab} za ON za.geo_id = g.geo_id::text"
     else:
         map_lat = pos_lat
         map_lon = pos_lon
@@ -1018,19 +1132,23 @@ def _od10_zone_map_rows(
     extra_cols = ""
     if has_w:
         extra_cols = f"""
-               z.{cols['trips_weighted']}::double precision AS trips_weighted,
-               z.{cols['emissions_g_weighted']}::double precision AS emissions_g_weighted,
-               z.{cols['distance_km']}::double precision AS distance_km,
-               z.{cols['distance_km_weighted']}::double precision AS distance_km_weighted,"""
-    emis_col = f"z.{cols['emissions_g_weighted']}" if use_w else f"z.{cols['emissions_g']}"
+               COALESCE(z.{cols['trips_weighted']}, 0)::double precision AS trips_weighted,
+               COALESCE(z.{cols['emissions_g_weighted']}, 0)::double precision AS emissions_g_weighted,
+               COALESCE(z.{cols['distance_km']}, 0)::double precision AS distance_km,
+               COALESCE(z.{cols['distance_km_weighted']}, 0)::double precision AS distance_km_weighted,"""
+    emis_col_raw = f"z.{cols['emissions_g_weighted']}" if use_w else f"z.{cols['emissions_g']}"
+    emis_col = f"COALESCE({emis_col_raw}, 0)"
+    zgeom = _zones_geom_table(cur)
+    if not zgeom:
+        return {"zones": [], "geojson": None}
     sql = island_cte + f"""
-        SELECT z.geo_id::text AS geo_id,
-               z.{cols['trips']}::double precision AS trips,
-               z.{cols['emissions_g']}::double precision AS emissions_g,{extra_cols}
+        SELECT g.geo_id::text AS geo_id,
+               COALESCE(z.{cols['trips']}, 0)::double precision AS trips,
+               COALESCE(z.{cols['emissions_g']}, 0)::double precision AS emissions_g,{extra_cols}
                {map_lat}::double precision AS lat,
                {map_lon}::double precision AS lon
-        FROM {SCHEMA}.{ztab} z
-        JOIN {SCHEMA}.popgen_zones_geom g ON g.geo_id::text = z.geo_id::text
+        FROM {SCHEMA}.{zgeom} g
+        LEFT JOIN {SCHEMA}.{ztab} z ON z.geo_id::text = g.geo_id::text
         {join_anchor}
         WHERE {emis_col} >= %s"""
     params.append(min_g)
@@ -1071,7 +1189,7 @@ def _od10_zone_map_rows(
     return {"zones": out, "geojson": geojson_fc}
 
 
-@app.route("/od-dashboard-api/od/zone_map")
+@app.route("/api/od/zone_map")
 @_od10_api_errors
 def api_od10_zone_map():
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
@@ -1130,7 +1248,7 @@ def api_od10_zone_map():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/zone_maps")
+@app.route("/api/od/zone_maps")
 @_od10_api_errors
 def api_od10_zone_maps():
     """Both choropleths in one response (destination + rules)."""
@@ -1192,7 +1310,7 @@ def api_od10_zone_maps():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/bootstrap")
+@app.route("/api/od/bootstrap")
 @_od10_api_errors
 def api_od10_bootstrap():
     conn = get_conn()
@@ -1447,7 +1565,7 @@ def _od10_building_emission_scale_bounds(
     }
 
 
-@app.route("/od-dashboard-api/od/building_emission_scale")
+@app.route("/api/od/building_emission_scale")
 def api_od10_building_emission_scale():
     """Per-building min/max emissions (g) for the buildings map colour legend."""
     building_by = _normalize_building_by(request.args.get("building_by") or "rules")
@@ -1511,6 +1629,8 @@ def _footprint_features_from_inventory_rows(
                 "total_emissions_g": inv.get("total_emissions_g", 0),
                 "trips": inv.get("trips", inv.get("trips_legs", 0)),
                 "trips_legs": inv.get("trips_legs", inv.get("trips", 0)),
+                "trips_weighted": inv.get("trips_weighted", 0),
+                "trips_display": inv.get("trips_display"),
                 "total_distance_km": inv.get("total_distance_km", 0),
             })
         props = _od10_zero_building_metrics(props)
@@ -1528,30 +1648,17 @@ def _zone_building_fabric_features(
     inventory_by_id: dict[str, dict],
     row_limit: int,
 ) -> tuple[list[dict], bool]:
-    """All footprint polygons in a zone; merge emissions only for filtered inventory rows."""
-    cur.execute(
-        f"""
-        SELECT b.id::text,
-               split_part(trim(b.zone_geo_id::text), '.', 1) AS zone_geo_id,
-               {geom_sql} AS geom_json
-        FROM {SCHEMA}.{BUILDINGS_TABLE} AS b
-        WHERE b.geometry IS NOT NULL
-          AND split_part(trim(b.zone_geo_id::text), '.', 1) = %s
-        ORDER BY b.id::text
-        LIMIT %s
-        """,
-        (zone_geo_id, row_limit + 1),
-    )
-    rows = cur.fetchall()
-    truncated = len(rows) > row_limit
-    if truncated:
-        rows = rows[:row_limit]
+    """Footprint polygons in a zone; inventory buildings first, then others up to row_limit."""
+    inv_ids = [str(bid).strip() for bid in inventory_by_id.keys() if bid]
     features: list[dict] = []
-    for r in rows:
+    seen: set[str] = set()
+
+    def _append_row(r: tuple) -> None:
         bid = str(r[0] or "").strip()
         geom_json = r[2]
-        if not bid or not geom_json:
-            continue
+        if not bid or not geom_json or bid in seen:
+            return
+        seen.add(bid)
         inv = inventory_by_id.get(bid)
         props: dict = {
             "building_id": bid,
@@ -1563,16 +1670,90 @@ def _zone_building_fabric_features(
                 "total_emissions_g": inv.get("total_emissions_g", 0),
                 "trips": inv.get("trips", inv.get("trips_legs", 0)),
                 "trips_legs": inv.get("trips_legs", inv.get("trips", 0)),
+                "trips_weighted": inv.get("trips_weighted", 0),
+                "trips_display": inv.get("trips_display"),
                 "total_distance_km": inv.get("total_distance_km", 0),
             })
         props = _od10_zero_building_metrics(props)
         feat = _geom_json_to_feature(geom_json, props)
         if feat:
             features.append(feat)
+
+    if inv_ids:
+        cur.execute(
+            f"""
+            SELECT b.id::text,
+                   split_part(trim(b.zone_geo_id::text), '.', 1) AS zone_geo_id,
+                   {geom_sql} AS geom_json
+            FROM {SCHEMA}.{BUILDINGS_TABLE} AS b
+            WHERE b.geometry IS NOT NULL
+              AND split_part(trim(b.zone_geo_id::text), '.', 1) = %s
+              AND b.id::text = ANY(%s)
+            ORDER BY b.id::text
+            """,
+            (zone_geo_id, inv_ids),
+        )
+        for r in cur.fetchall():
+            if len(features) >= row_limit:
+                break
+            _append_row(r)
+
+    remaining = row_limit - len(features)
+    if remaining > 0:
+        exclude = list(seen)
+        if exclude:
+            cur.execute(
+                f"""
+                SELECT b.id::text,
+                       split_part(trim(b.zone_geo_id::text), '.', 1) AS zone_geo_id,
+                       {geom_sql} AS geom_json
+                FROM {SCHEMA}.{BUILDINGS_TABLE} AS b
+                WHERE b.geometry IS NOT NULL
+                  AND split_part(trim(b.zone_geo_id::text), '.', 1) = %s
+                  AND NOT (b.id::text = ANY(%s))
+                ORDER BY b.id::text
+                LIMIT %s
+                """,
+                (zone_geo_id, exclude, remaining + 1),
+            )
+        else:
+            cur.execute(
+                f"""
+                SELECT b.id::text,
+                       split_part(trim(b.zone_geo_id::text), '.', 1) AS zone_geo_id,
+                       {geom_sql} AS geom_json
+                FROM {SCHEMA}.{BUILDINGS_TABLE} AS b
+                WHERE b.geometry IS NOT NULL
+                  AND split_part(trim(b.zone_geo_id::text), '.', 1) = %s
+                ORDER BY b.id::text
+                LIMIT %s
+                """,
+                (zone_geo_id, remaining + 1),
+            )
+        extra = cur.fetchall()
+        extra_truncated = len(extra) > remaining
+        if extra_truncated:
+            extra = extra[:remaining]
+        for r in extra:
+            _append_row(r)
+    else:
+        extra_truncated = False
+
+    cur.execute(
+        f"""
+        SELECT COUNT(*)::bigint
+        FROM {SCHEMA}.{BUILDINGS_TABLE} AS b
+        WHERE b.geometry IS NOT NULL
+          AND split_part(trim(b.zone_geo_id::text), '.', 1) = %s
+        """,
+        (zone_geo_id,),
+    )
+    zone_total = int((cur.fetchone() or [0])[0] or 0)
+    truncated = zone_total > row_limit or extra_truncated or len(inv_ids) > row_limit
     return features, truncated
 
 
-@app.route("/od-dashboard-api/od/zone_building_fabric")
+@app.route("/api/od/zone_building_fabric")
 def api_od10_zone_building_fabric():
     """All building footprint polygons in a zone (independent of emissions filter)."""
     zone_geo_id = (request.args.get("zone_geo_id") or "").strip()
@@ -1604,7 +1785,7 @@ def api_od10_zone_building_fabric():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/building_map")
+@app.route("/api/od/building_map")
 def api_od10_building_map():
     """Building-level emissions from OD10 routes detail (rules or destination building)."""
     try:
@@ -1826,6 +2007,11 @@ def api_od10_building_map():
             legs_params.append(min_g)
             legs_params.append(row_limit + 1)
             if building_tab:
+                cap_share_sql = (
+                    "COALESCE(e.trips_is_capacity_share, false)"
+                    if _column_exists(cur, building_tab, "trips_is_capacity_share")
+                    else "false"
+                )
                 cur.execute(
                     f"""
                     SELECT b.id::text AS building_id,
@@ -1838,7 +2024,7 @@ def api_od10_building_map():
                            COALESCE(e.{dist_c}, 0)::double precision AS total_distance_km,
                            false AS trips_is_imputed,
                            COALESCE(e.{tw_c}, 0)::double precision AS trips_assigned_weighted,
-                           false AS trips_is_capacity_share,
+                           {cap_share_sql} AS trips_is_capacity_share,
                            {geom_sql} AS geom_json
                     FROM {SCHEMA}.{buildings_rel} AS b
                     LEFT JOIN {SCHEMA}.{building_tab} AS e ON e.building_id = b.id::text
@@ -1965,7 +2151,7 @@ def api_od10_building_map():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/building_footprint")
+@app.route("/api/od/building_footprint")
 def api_od10_building_footprint():
     building_id = (request.args.get("building_id") or "").strip()
     if not building_id:
@@ -1984,7 +2170,7 @@ def api_od10_building_footprint():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/building_detail")
+@app.route("/api/od/building_detail")
 def api_od10_building_detail():
     building_id = (request.args.get("building_id") or "").strip()
     if not building_id:
@@ -2099,7 +2285,7 @@ def api_od10_building_detail():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/flows_zones")
+@app.route("/api/od/flows_zones")
 def api_od10_flows_zones():
     """Fast zone list for od-flows.html (rules or dest choropleth, no polygons)."""
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
@@ -2112,7 +2298,7 @@ def api_od10_flows_zones():
         return api_od10_zone_map()
 
 
-@app.route("/od-dashboard-api/od/zone_incoming_flow")
+@app.route("/api/od/zone_incoming_flow")
 def api_od10_zone_incoming_flow():
     dest_id = (request.args.get("dest_geo_id", "") or "").strip()
     if not dest_id:
@@ -2224,7 +2410,7 @@ def api_od10_zone_incoming_flow():
         conn.close()
 
 
-@app.route("/od-dashboard-api/od/zone_incoming_flows_all")
+@app.route("/api/od/zone_incoming_flows_all")
 def api_od10_zone_incoming_flows_all():
     zone_by = (request.args.get("zone_by", "rules") or "rules").strip().lower()
     if zone_by == "meeting":
@@ -2424,22 +2610,78 @@ def api_od10_zone_incoming_flows_all():
         conn.close()
 
 
+def _deploy_cfg_dict() -> dict:
+    up = DEPLOY["url_prefix"]
+    ap = DEPLOY["api_prefix"]
+    api_base = f"{up}{ap}" if up or ap else "/api"
+    return {
+        "urlPrefix": up,
+        "apiPrefix": ap,
+        "apiBase": api_base,
+        "showBoundaryButton": DEPLOY["show_boundary_button"],
+        "offline": DEPLOY["offline"],
+    }
+
+
+def _deploy_inline_script() -> str:
+    """Inject before dashboard-config.js so deploy flags work even when assets are static."""
+    cfg = json.dumps(_deploy_cfg_dict(), separators=(",", ":"))
+    return f"<script>window.__dashDeploy={cfg};</script>\n  "
+
+
+def _rewrite_html_for_offline(html: str) -> str:
+    """Swap CDN assets for bundled vendor files; drop Google Fonts."""
+    html = re.sub(r"\s*<link[^>]*fonts\.(googleapis|gstatic)\.com[^>]*>\s*", "\n", html, flags=re.I)
+    replacements = (
+        ("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "assets/vendor/leaflet.css"),
+        ("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", "assets/vendor/leaflet.js"),
+        (
+            "https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js",
+            "assets/vendor/leaflet-heat.js",
+        ),
+        (
+            "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js",
+            "assets/vendor/chart.umd.min.js",
+        ),
+        (
+            "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0",
+            "assets/vendor/chartjs-plugin-datalabels.min.js",
+        ),
+    )
+    for old, new in replacements:
+        html = html.replace(old, new)
+    if "dashboard-offline.css" not in html:
+        html = html.replace(
+            "<head>",
+            '<head>\n  <link rel="stylesheet" href="assets/dashboard-offline.css" />',
+            1,
+        )
+    return html
+
+
+def _serve_html_page(filename: str):
+    """Serve dashboard HTML with runtime deploy settings inlined (NGCI / subpath safe)."""
+    path = Path(app.static_folder) / filename
+    if not path.is_file():
+        return f"<p>{filename} not found.</p>", 404
+    html = path.read_text(encoding="utf-8")
+    if DEPLOY["offline"]:
+        html = _rewrite_html_for_offline(html)
+    inject = _deploy_inline_script()
+    marker = '<script src="assets/dashboard-config.js'
+    if marker in html and "__dashDeploy" not in html:
+        html = html.replace(marker, inject + marker, 1)
+    resp = Response(html, mimetype="text/html; charset=utf-8")
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+
+
 def _serve_od_dashboard():
-    d = Path(app.static_folder)
-    if d.exists():
-        resp = send_from_directory(d, "od-dashboard.html")
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return resp
-    return "<p>od-dashboard.html not found.</p>", 404
+    return _serve_html_page("od-dashboard.html")
 
 
 def _serve_od_html():
-    d = Path(app.static_folder)
-    if d.exists():
-        resp = send_from_directory(d, "od.html")
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return resp
-    return "<p>od.html not found.</p>", 404
+    return _serve_html_page("od.html")
 
 
 def _redirect_legacy_od_page(new_path: str):
@@ -2465,34 +2707,22 @@ def od_page():
 @app.route("/od-flows")
 @app.route("/od-flows.html")
 def od_flows_page():
-    d = Path(app.static_folder)
-    if d.exists():
-        resp = send_from_directory(d, "od-flows.html")
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return resp
-    return "<p>od-flows.html not found.</p>", 404
+    return _serve_html_page("od-flows.html")
 
 
 @app.route("/od-buildings")
 @app.route("/od-buildings.html")
 def od_buildings_page():
-    d = Path(app.static_folder)
-    if d.exists():
-        resp = send_from_directory(d, "od-buildings.html")
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return resp
-    return "<p>od-buildings.html not found.</p>", 404
+    return _serve_html_page("od-buildings.html")
 
 
 @app.route("/od-zones-boundary")
 @app.route("/od-zones-boundary.html")
 def od_zones_boundary_page():
-    d = Path(app.static_folder)
-    if d.exists():
-        resp = send_from_directory(d, "od-zones-boundary.html")
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
-        return resp
-    return "<p>od-zones-boundary.html not found.</p>", 404
+    if not DEPLOY["show_boundary_button"]:
+        prefix = DEPLOY["url_prefix"] or ""
+        return redirect(f"{prefix}/" if prefix else "/", code=302)
+    return _serve_html_page("od-zones-boundary.html")
 
 
 @app.route("/od10")
@@ -2527,15 +2757,7 @@ def legacy_od10_zones_boundary_page():
 
 @app.route("/assets/dashboard-config.js")
 def dashboard_config_js():
-    up = DEPLOY["url_prefix"]
-    ap = DEPLOY["api_prefix"]
-    api_base = f"{up}{ap}" if up or ap else "/api"
-    cfg = {
-        "urlPrefix": up,
-        "apiPrefix": ap,
-        "apiBase": api_base,
-        "showBoundaryButton": DEPLOY["show_boundary_button"],
-    }
+    cfg = _deploy_cfg_dict()
     static_cfg = Path(app.static_folder) / "assets" / "dashboard-config.js"
     helpers = ""
     if static_cfg.is_file():
@@ -2562,7 +2784,25 @@ def static_file(path):
 
 
 if __name__ == "__main__":
+    _repo_root = Path(__file__).resolve().parent.parent
+    _load_default_deploy_env(_repo_root)
+
+    _pre = argparse.ArgumentParser(add_help=False)
+    _pre.add_argument("--env-file", default=os.environ.get("DASH_ENV_FILE", ""))
+    _pre.add_argument("--bundle-root", default=os.environ.get("POPGEN_BUNDLE_ROOT"))
+    _pre_args, _ = _pre.parse_known_args()
+    if _pre_args.env_file:
+        _load_deploy_env(Path(_pre_args.env_file).expanduser().resolve(), override=True)
+    _bundle_hint = _resolve_bundle_root(_pre_args.bundle_root) if _pre_args.bundle_root else _resolve_bundle_root()
+    if _bundle_hint and _bundle_hint != _repo_root:
+        _load_default_deploy_env(_bundle_hint)
+
     ap = argparse.ArgumentParser(description="PopGen emissions dashboard API server")
+    ap.add_argument(
+        "--env-file",
+        default=_pre_args.env_file or "",
+        help="Optional deploy.env file (KEY=VALUE). Also auto-loads deploy.env or .env from bundle root.",
+    )
     ap.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
     ap.add_argument(
         "--port",
@@ -2602,6 +2842,13 @@ if __name__ == "__main__":
         metavar="BOOL",
         help="Show Boundaries nav link (default: true). Pass false to hide.",
     )
+    ap.add_argument(
+        "--offline",
+        default=_str_to_bool(os.environ.get("DASH_OFFLINE", "false")),
+        type=_str_to_bool,
+        metavar="BOOL",
+        help="Offline mode: bundled JS/CSS, no CDN fonts or map tiles (default: false).",
+    )
     args = ap.parse_args()
     if args.bundle_root:
         bundle_root = _resolve_bundle_root(str(args.bundle_root))
@@ -2613,6 +2860,7 @@ if __name__ == "__main__":
         url_prefix=args.url_prefix,
         api_prefix=args.api_prefix,
         show_boundary_button=args.show_boundary_button,
+        offline=args.offline,
     )
     _apply_db_cli(
         db_host=args.db_host,
@@ -2622,6 +2870,19 @@ if __name__ == "__main__":
         db_password=args.db_password,
         db_schema=args.db_schema,
     )
+    try:
+        _zc = get_conn()
+        try:
+            _cur = _zc.cursor()
+            ensure_zones_geom_compat(_cur)
+            _zc.commit()
+            _zt = _zones_geom_table(_cur)
+            if _zt:
+                print(f"  Zone geometry table: {SCHEMA}.{_zt}", flush=True)
+        finally:
+            _zc.close()
+    except Exception as _ze:
+        print(f"  Zone geometry check skipped: {_ze}", flush=True)
     up = DEPLOY["url_prefix"]
     ap = DEPLOY["api_prefix"]
     base = f"http://127.0.0.1:{args.port}{up or ''}"
@@ -2630,7 +2891,11 @@ if __name__ == "__main__":
     print(f"  URL prefix: {up or '(root)'}")
     print(f"  API prefix: {ap}")
     print(f"  Boundaries nav: {'on' if DEPLOY['show_boundary_button'] else 'off'}")
-    print(f"  DB: {DB_PARAMS['user']}@{DB_PARAMS['host']}:{DB_PARAMS['port']}/{DB_PARAMS['dbname']} schema={SCHEMA}")
+    print(f"  Offline mode: {'on' if DEPLOY['offline'] else 'off'}")
+    print(
+        f"  DB: {DB_PARAMS.get('user', '(default)')}@{DB_PARAMS.get('host', 'localhost')}:"
+        f"{DB_PARAMS.get('port', '5432')}/{DB_PARAMS.get('dbname', 'od_dashboard')} schema={SCHEMA}"
+    )
     print(f"  Buildings: {base}/od-buildings.html")
     print(f"  Flows: {base}/od-flows.html")
     if DEPLOY["show_boundary_button"]:

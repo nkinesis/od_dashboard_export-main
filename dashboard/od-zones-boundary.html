@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <base href="/montreal-traffic-emissions-dashboard/">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>PopGen · Actual OD survey (PM23) · Zone boundaries</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -126,7 +125,7 @@
         <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
         <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
         <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
-        <!-- <a class="dash-nav-link active" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a> -->
+        <a class="dash-nav-link dash-nav-boundaries active" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Click a zone · search by CT code</span>
     </header>
@@ -186,10 +185,11 @@
     </section>
   </div>
 
-  <script src="assets/dashboard-config.js?v=2"></script>
+  <script src="assets/dashboard-config.js?v=3"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="assets/dashboard-map-basemap.js"></script>
   <script src="assets/loading-overlay.js?v=11"></script>
-  <script src="assets/dashboard-nav.js?v=15"></script>
+  <script src="assets/dashboard-nav.js?v=17"></script>
   <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script>
   (function () {
@@ -221,10 +221,7 @@
     }
 
     var map = L.map('map', { zoomControl: true, preferCanvas: true });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OSM &copy; CARTO',
-      maxZoom: 19
-    }).addTo(map);
+    DashMapBasemap.addTo(map, 'dark_all', { maxZoom: 19 });
 
     var boundaryLayer = null;
     var islandLayer = null;
@@ -332,7 +329,7 @@
     }
 
     function loadIslandOutline() {
-      return fetchJson('/od-dashboard-api/montreal_boundary.geojson').then(function (gj) {
+      return fetchJson('/api/montreal_boundary.geojson').then(function (gj) {
         if (islandLayer) {
           map.removeLayer(islandLayer);
           islandLayer = null;
@@ -359,7 +356,7 @@
         btn.classList.toggle('active', btn.dataset.extent === currentExtent);
       });
 
-      return fetchJson('/od-dashboard-api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
+      return fetchJson('/api/od/zones_boundary?island_only=' + islandOnly).then(function (data) {
         zoneIndex = {};
         selectedGeoId = null;
         clearHighlight();
@@ -433,7 +430,7 @@
     PageLoading.init();
     PageLoading.show();
 
-    fetchJson('/od-dashboard-api/zone_codes')
+    fetchJson('/api/zone_codes')
       .then(function (data) {
         if (data && data.zone_codes && window.DashZoneUi) DashZoneUi.setZoneCodeMap(data.zone_codes);
         if (data && data.zone_names && window.DashZoneUi) DashZoneUi.setZoneNameMap(data.zone_names);

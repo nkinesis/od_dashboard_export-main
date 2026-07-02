@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-    <base href="/montreal-traffic-emissions-dashboard/">
   <title>PopGen · Actual OD survey (PM23) emissions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,10 +12,11 @@
   <link rel="stylesheet" href="assets/loading-overlay.css" />
   <link rel="stylesheet" href="assets/dashboard-nav.css" />
   <link rel="stylesheet" href="assets/dashboard-shell.css?v=11" />
-  <link rel="stylesheet" href="assets/dashboard-embed.css?v=9" />
+  <link rel="stylesheet" href="assets/dashboard-embed.css?v=10" />
   <script src="assets/dashboard-embed.js?v=1"></script>
   <script src="assets/loading-overlay.js?v=11"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="assets/dashboard-map-basemap.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
@@ -211,6 +211,18 @@
       pointer-events: none;
       line-height: 1.1;
     }
+    .zone-boundary-highlight path {
+      pointer-events: none;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 6px rgba(94, 234, 212, 0.9));
+      animation: zoneBoundaryPulse 2s ease-in-out infinite;
+    }
+    @keyframes zoneBoundaryPulse {
+      0%, 100% { filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 6px rgba(94, 234, 212, 0.85)); }
+      50% { filter: drop-shadow(0 0 3px #ffffff) drop-shadow(0 0 12px rgba(94, 234, 212, 1)); }
+    }
+    .leaflet-pane > svg path.leaflet-interactive:focus { outline: none; }
   </style>
 </head>
 <body data-dash-page="od-zones">
@@ -231,7 +243,7 @@
         <a class="dash-nav-link" data-page="od-zones" href="?view=zones">Zone maps</a>
         <a class="dash-nav-link" data-page="od-buildings" href="?view=buildings">Buildings</a>
         <a class="dash-nav-link" data-page="od-flows" href="?view=flows">Flows</a>
-        <!-- <a class="dash-nav-link" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a> -->
+        <a class="dash-nav-link dash-nav-boundaries" data-page="od-boundaries" href="od-zones-boundary.html">Boundaries</a>
       </nav>
       <span class="pill" id="liveHint">Zone maps</span>
     </header>
@@ -344,8 +356,8 @@
     </section>
   </div>
 
-  <script src="assets/dashboard-nav.js?v=15"></script>
-  <script src="assets/dashboard-config.js?v=2"></script>
+  <script src="assets/dashboard-nav.js?v=17"></script>
+  <script src="assets/dashboard-config.js?v=3"></script>
   <script src="assets/dashboard-zone-ui.js?v=20"></script>
   <script>
     const IS_EMBED = !!(window.DashEmbed && DashEmbed.isEmbed);
@@ -447,6 +459,29 @@
       { t: 0.72, c: '#fb923c' }, { t: 1, c: '#dc2626' },
     ];
     const EMISSION_HEAT_GRADIENT = { 0.1: '#22c55e', 0.35: '#a3e635', 0.55: '#fde047', 0.75: '#fb923c', 1: '#dc2626' };
+    const ZONE_NO_TRIP_FILL = '#475569';
+    const ZONE_NO_TRIP_STROKE = '#64748b';
+    const ISLAND_OUTLINE_BUFFER_M = 1000;
+
+    function zoneDisplayTrips(props) {
+      const p = props || {};
+      const w = Number(p.trips_weighted);
+      if (Number.isFinite(w) && w > 0) return w;
+      return Number(p.trips != null ? p.trips : p.trips_legs) || 0;
+    }
+    function zoneHasTripActivity(props) {
+      return Math.round(zoneDisplayTrips(props)) > 0;
+    }
+    function zoneChoroplethFill(props) {
+      if (!zoneHasTripActivity(props)) return ZONE_NO_TRIP_FILL;
+      return emissionColor(emissionNormFromG((props && props.total_emissions_g) || 0));
+    }
+    function zoneChoroplethStroke(props, isSel, isIncoming) {
+      if (!zoneHasTripActivity(props)) return ZONE_NO_TRIP_STROKE;
+      if (isSel) return '#5eead4';
+      if (isIncoming) return '#14532d';
+      return '#166534';
+    }
 
     function collectEmissionsGFromPayload(payload) {
       const vals = [];
@@ -742,10 +777,47 @@
         zIndexOffset: 2000,
       }).addTo(v.zoneLabelLayer);
     }
+    function disposeZoneOutlineLayer(viewKey) {
+      const v = mapViews[viewKey];
+      if (!v || !v.zoneOutlineLayer || !v.map) return;
+      v.map.removeLayer(v.zoneOutlineLayer);
+      v.zoneOutlineLayer = null;
+    }
+    function zoneFeatureGeoId(feature) {
+      const p = feature && feature.properties;
+      if (!p) return '';
+      return String(p.geo_id != null ? p.geo_id : '');
+    }
+    function addSelectedZoneOutline(viewKey, fc, selId) {
+      const v = mapViews[viewKey];
+      if (!v || !v.map || !selId || !fc || !fc.features) return;
+      disposeZoneOutlineLayer(viewKey);
+      const selFeat = fc.features.find((f) => zoneFeatureGeoId(f) === String(selId));
+      if (!selFeat) return;
+      if (!v.map.getPane('zoneOutlinePane')) {
+        v.map.createPane('zoneOutlinePane');
+        v.map.getPane('zoneOutlinePane').style.zIndex = 640;
+      }
+      v.zoneOutlineLayer = L.geoJSON(selFeat, {
+        pane: 'zoneOutlinePane',
+        interactive: false,
+        style: {
+          fillOpacity: 0,
+          color: '#5eead4',
+          weight: 4,
+          opacity: 1,
+          className: 'zone-boundary-highlight',
+        },
+        onEachFeature(_feature, layer) {
+          if (layer._path) layer._path.style.pointerEvents = 'none';
+        },
+      }).addTo(v.map);
+    }
     function disposeZoneLayer(viewKey) {
       const v = mapViews[viewKey];
       if (!v || !v.map) return;
       disposeZoneLabelLayer(viewKey);
+      disposeZoneOutlineLayer(viewKey);
       if (!v.zoneLayer) return;
       v.map.removeLayer(v.zoneLayer);
       v.zoneLayer = null;
@@ -769,11 +841,12 @@
             const p = feature.properties;
             const g = (p && p.total_emissions_g) || 0;
             const isSel = highlight && p && selId && String(p.geo_id) === selId;
+            const noTrips = !zoneHasTripActivity(p);
             return {
-              fillColor: emissionColor(emissionNormFromG(g)),
-              fillOpacity: 0.78,
-              color: isSel ? '#5eead4' : '#166534',
-              weight: isSel ? 2.5 : 1.15,
+              fillColor: zoneChoroplethFill(p),
+              fillOpacity: isSel ? 0.85 : (noTrips ? 0.72 : 0.78),
+              color: zoneChoroplethStroke(p, isSel, false),
+              weight: isSel ? 2 : (noTrips ? 1.05 : 1.15),
               opacity: 0.95,
             };
           },
@@ -786,6 +859,7 @@
             bindZoneSelectClick(layer, p.geo_id, v.zoneBy);
           },
         }).addTo(v.map);
+        if (highlight && selId) addSelectedZoneOutline(viewKey, fc, selId);
         renderSelectedZoneLabel(viewKey, payload);
         return;
       }
@@ -817,11 +891,10 @@
       m.createPane('zoneBgPane'); m.getPane('zoneBgPane').style.zIndex = 405;
       m.createPane('heatPane'); m.getPane('heatPane').style.zIndex = 410;
       m.createPane('zonePane'); m.getPane('zonePane').style.zIndex = 430;
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 20,
-      }).addTo(m);
+      m.createPane('zoneOutlinePane'); m.getPane('zoneOutlinePane').style.zIndex = 640;
+      DashMapBasemap.addTo(m, 'light_all');
       m.fitBounds([[45.38, -74.0], [45.68, -73.35]], { animate: false });
-      return { ...spec, map: m, zoneLayer: null, zoneLabelLayer: null, heatLayer: null, boundaryLayer: null, zonesBoundaryLayer: null, payload: { zones: [], geojson: null } };
+      return { ...spec, map: m, zoneLayer: null, zoneLabelLayer: null, zoneOutlineLayer: null, heatLayer: null, boundaryLayer: null, zonesBoundaryLayer: null, payload: { zones: [], geojson: null } };
     }
 
     function ensureMapViewData(key) {
@@ -833,6 +906,7 @@
         map: null,
         zoneLayer: null,
         zoneLabelLayer: null,
+        zoneOutlineLayer: null,
         heatLayer: null,
         boundaryLayer: null,
         zonesBoundaryLayer: null,
@@ -847,7 +921,14 @@
       if (v.boundaryLayer) { v.map.removeLayer(v.boundaryLayer); v.boundaryLayer = null; }
       v.boundaryLayer = L.geoJSON(montrealBoundaryGeojson, {
         interactive: false,
-        style: () => ({ color: '#14b8a6', weight: 2, opacity: 0.9, fill: false, fillOpacity: 0 }),
+        style: () => ({
+          color: '#14b8a6',
+          weight: 2.5,
+          opacity: 0.92,
+          fill: false,
+          fillOpacity: 0,
+          dashArray: '10 6',
+        }),
       }).addTo(v.map);
     }
 
@@ -859,9 +940,9 @@
         pane: 'zoneBgPane',
         interactive: false,
         style: () => ({
-          color: 'rgba(148, 163, 184, 0.42)',
-          weight: 0.85,
-          opacity: 0.55,
+          color: 'rgba(100, 116, 139, 0.72)',
+          weight: 1.05,
+          opacity: 0.88,
           fillOpacity: 0,
           fill: false,
         }),
@@ -915,7 +996,7 @@
     async function loadCmmZoneBoundaries() {
       try {
         if (!cmmZonesBoundaryGeojson) {
-          const raw = await fetchJson('/od-dashboard-api/od/zones_boundary?island_only=0');
+          const raw = await fetchJson('/api/od/zones_boundary?island_only=1');
           cmmZonesBoundaryGeojson = raw && raw.geojson;
         }
         applyCmmZoneBoundariesToMaps(cmmZonesBoundaryGeojson);
@@ -926,7 +1007,7 @@
 
     async function loadMontrealBoundary() {
       try {
-        const gj = await fetchJson('/od-dashboard-api/montreal_boundary.geojson');
+        const gj = await fetchJson('/api/montreal_boundary.geojson?buffer_m=' + ISLAND_OUTLINE_BUFFER_M);
         if (!gj || gj.type !== 'FeatureCollection' || !gj.features || !gj.features.length) return;
         montrealBoundaryGeojson = gj;
         MAP_SPECS.forEach(spec => applyMontrealBoundaryToView(spec.key));
@@ -1022,12 +1103,12 @@
     async function loadDualZoneMaps(minKg, maxKg) {
       const qs = buildZoneQuery(minKg, maxKg);
       try {
-        return await fetchJson('/od-dashboard-api/od/zone_maps?' + qs);
+        return await fetchJson('/api/od/zone_maps?' + qs);
       } catch (batchErr) {
         console.warn('zone_maps batch failed, falling back to two requests:', batchErr);
         const [dest, rules] = await Promise.all([
-          fetchJson('/od-dashboard-api/od/zone_map?' + qs + '&zone_by=dest'),
-          fetchJson('/od-dashboard-api/od/zone_map?' + qs + '&zone_by=rules'),
+          fetchJson('/api/od/zone_map?' + qs + '&zone_by=dest'),
+          fetchJson('/api/od/zone_map?' + qs + '&zone_by=rules'),
         ]);
         return { dest, rules };
       }
@@ -1143,8 +1224,8 @@
       const zonesPromise = refreshZones().catch(err => { console.error('zone maps:', err); return err; });
       const bootPromise = IS_EMBED
         ? Promise.resolve(null)
-        : fetchJson('/od-dashboard-api/od/bootstrap').catch(err => { console.error('bootstrap:', err); return null; });
-      const zoneCodesPromise = fetchJson('/od-dashboard-api/zone_codes').catch(() => null);
+        : fetchJson('/api/od/bootstrap').catch(err => { console.error('bootstrap:', err); return null; });
+      const zoneCodesPromise = fetchJson('/api/zone_codes').catch(() => null);
       const [, , boot, zoneCodes] = await Promise.all([
         loadMontrealBoundary(), loadCmmZoneBoundaries(), bootPromise, zoneCodesPromise,
       ]);
@@ -1202,12 +1283,17 @@
           const main = document.querySelector('.main');
           if (main) main.insertBefore(warn, main.querySelector('.map-wrap'));
         }
-        await new Promise(r => setTimeout(r, IS_EMBED ? 50 : 150));
-        invalidateActiveMap();
         if (IS_EMBED && window.DashEmbed) {
           const zp = mapViews[activeViewKey()] && mapViews[activeViewKey()].payload;
           const n = (zp && zp.zones && zp.zones.length) || 0;
-          DashEmbed.notifyDataReady({ zones: n });
+          await new Promise(function (r) {
+            window.requestAnimationFrame(function () {
+              window.requestAnimationFrame(r);
+            });
+          });
+          invalidateActiveMap();
+          await new Promise(function (r) { window.setTimeout(r, 180); });
+          DashEmbed.notifyDataReady({ zones: n, mapReady: true });
           DashEmbed.syncHint();
           DashEmbed.notifyReady();
         } else if (window.PageLoading) {
