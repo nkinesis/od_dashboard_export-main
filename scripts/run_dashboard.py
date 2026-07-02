@@ -505,7 +505,7 @@ if CORS is not None:
 
 DEPLOY = {
     "url_prefix": "",
-    "api_prefix": "/od-dashboard-api",
+    "api_prefix": "/lala",
     "show_boundary_button": True,
     "offline": False,
 }
